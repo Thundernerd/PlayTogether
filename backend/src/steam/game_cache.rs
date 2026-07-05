@@ -10,7 +10,7 @@ use crate::steam::client::{
     AppDetailsData, SteamClient, StoreItem, derive_is_released, derive_is_released_from_app_details,
     store_item_has_details,
 };
-use crate::steam::{
+use crate::steam::media_urls::{
     collect_trailers, header_image_url, header_image_url_from_app_details, header_image_url_from_item,
     is_allowed_video_cdn_url, normalize_header_image_url, screenshot_urls_from_item, trailer_entries,
     trailer_proxy_video_url, trailer_video_mp4_url, trailer_video_webm_url, STORE_ASSETS_BASE,

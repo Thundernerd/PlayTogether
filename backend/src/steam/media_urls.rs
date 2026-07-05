@@ -165,7 +165,6 @@ pub fn is_allowed_video_cdn_url(url: &str) -> bool {
 pub struct ResolvedTrailer {
     pub name: String,
     pub thumbnail_url: Option<String>,
-    pub video_mp4_url: String,
     pub video_webm_url: Option<String>,
     pub category: Option<i32>,
 }
@@ -189,14 +188,15 @@ pub fn trailer_entries(trailers: &StoreTrailers) -> Vec<ResolvedTrailer> {
 }
 
 fn resolve_trailer(trailer: &StoreTrailer) -> Option<ResolvedTrailer> {
-    let video_mp4_url = trailer_video_mp4_url(trailer)?;
+    if trailer_video_mp4_url(trailer).is_none() {
+        return None;
+    }
     Some(ResolvedTrailer {
         name: trailer
             .trailer_name
             .clone()
             .unwrap_or_else(|| "Trailer".to_string()),
         thumbnail_url: trailer_thumbnail_url(trailer),
-        video_mp4_url,
         video_webm_url: trailer_video_webm_url(trailer),
         category: trailer.trailer_category,
     })
