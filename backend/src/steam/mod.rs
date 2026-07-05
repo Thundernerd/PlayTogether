@@ -10,6 +10,6 @@ pub use media_urls::{
     header_image_url_from_item, is_allowed_video_cdn_url, normalize_header_image_url,
     normalize_store_asset_url, resolve_asset_url, screenshot_urls, screenshot_urls_from_item,
     trailer_entries, trailer_movie_id, trailer_proxy_video_url, trailer_thumbnail_url,
-    trailer_video_mp4_url, trailer_video_webm_url, STORE_ASSETS_BASE,
+    trailer_video_mp4_url, trailer_video_webm_url, STORE_ASSETS_BASE, STEAM_TRAILER_VIDEO_CDN,
 };
 pub use tags::TagCache;
