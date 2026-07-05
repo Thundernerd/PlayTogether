@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const group = useGroup()
 const { sharedGames, actionLoading, vote, rate, ensureLoaded, groupBasePath } = group
+const { open: openGameDetail } = useGameDetail()
 
 onMounted(() => ensureLoaded({ wishlists: false, shared: true }))
 </script>
@@ -21,6 +22,7 @@ onMounted(() => ensureLoaded({ wishlists: false, shared: true }))
           :disabled="actionLoading"
           @vote="vote(game.appid, $event)"
           @rate="rate(game.appid, $event)"
+          @open="openGameDetail(game.appid)"
         />
       </div>
       <p v-else class="muted">
@@ -30,6 +32,7 @@ onMounted(() => ensureLoaded({ wishlists: false, shared: true }))
     </section>
 
     <ScrollToTop />
+    <GameDetailModal />
   </div>
 </template>
 

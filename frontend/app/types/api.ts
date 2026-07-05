@@ -40,6 +40,27 @@ export interface GameInfo {
   is_released?: boolean | null
 }
 
+export interface GameTrailer {
+  name: string
+  thumbnail_url?: string | null
+  video_url: string
+  video_webm_url?: string | null
+  category?: number | null
+}
+
+export interface GameDetail {
+  appid: number
+  name: string
+  short_description: string
+  full_description?: string | null
+  header_image_url: string
+  tags: string[]
+  is_released?: boolean | null
+  screenshots: string[]
+  trailers: GameTrailer[]
+  store_url: string
+}
+
 export interface WishlistItemView {
   appid: number
   priority: number

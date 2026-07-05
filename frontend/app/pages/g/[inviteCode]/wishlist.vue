@@ -8,6 +8,7 @@ type WishlistSort = 'name_asc' | 'name_desc' | 'date_desc' | 'date_asc'
 const group = useGroup()
 const { myWishlist, syncComplete, actionLoading, toggleSelection, ensureLoaded } = group
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
+const { open: openGameDetail } = useGameDetail()
 
 const wishlistSearch = ref('')
 const wishlistFilter = ref<WishlistFilter>('all')
@@ -123,6 +124,7 @@ onUnmounted(stopPolling)
             show-checkbox
             :disabled="!syncComplete || actionLoading"
             @toggle="toggleSelection(item.appid, $event)"
+            @open="openGameDetail(item.appid)"
           />
         </div>
         <p v-else class="muted">No games match your search or filters.</p>
@@ -133,6 +135,7 @@ onUnmounted(stopPolling)
     </section>
 
     <ScrollToTop />
+    <GameDetailModal />
   </div>
 </template>
 
