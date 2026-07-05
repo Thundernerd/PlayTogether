@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SharedGame } from '~/types/api'
+import { headerImageSrc, refetchHeaderImage } from '~/utils/steamImages'
 
 const props = defineProps<{
   item: SharedGame
@@ -9,7 +10,37 @@ const props = defineProps<{
 const emit = defineEmits<{
   vote: [vote: 'up' | 'down' | 'none']
   rate: [stars: number | null]
+  open: []
 }>()
+
+const { api } = useApi()
+const imageUrl = ref<string | null>(headerImageSrc(props.item.game.header_image_url))
+const imageRetryDone = ref(false)
+
+watch(
+  () => props.item.game.header_image_url,
+  (url) => {
+    imageUrl.value = headerImageSrc(url)
+    imageRetryDone.value = false
+  },
+)
+
+async function onImageError() {
+  if (imageRetryDone.value) return
+  imageRetryDone.value = true
+  try {
+    const url = await refetchHeaderImage(
+      (appid) => api(`/api/games/${appid}`),
+      props.item.appid,
+    )
+    if (url) {
+      imageUrl.value = url
+      imageRetryDone.value = false
+    }
+  } catch {
+    imageUrl.value = null
+  }
+}
 
 const selectedNames = computed(() => props.item.selected_by.map((m) => m.display_name).join(', '))
 
@@ -21,15 +52,22 @@ function setStars(value: number) {
 
 <template>
   <article class="shared-row card">
-    <img
-      :src="item.game.header_image_url"
-      :alt="item.game.name"
-      class="thumb"
-      loading="lazy"
-    />
+    <button type="button" class="media-button" @click="emit('open')">
+      <div v-if="!imageUrl" class="thumb thumb-placeholder" aria-hidden="true" />
+      <img
+        v-else
+        :src="imageUrl"
+        :alt="item.game.name"
+        class="thumb"
+        loading="lazy"
+        @error="onImageError"
+      />
+    </button>
     <div class="content">
       <div class="header">
-        <h3>{{ item.game.name }}</h3>
+        <button type="button" class="title-button" @click="emit('open')">
+          <h3>{{ item.game.name }}</h3>
+        </button>
         <div class="score">
           Score {{ item.net_score }}
           <span v-if="item.avg_stars" class="avg">· ★ {{ item.avg_stars.toFixed(1) }}</span>
@@ -40,7 +78,7 @@ function setStars(value: number) {
       <div class="tags">
         <span v-for="tag in item.game.tags.slice(0, 5)" :key="tag" class="tag">{{ tag }}</span>
       </div>
-      <div class="actions">
+      <div class="actions" @click.stop>
         <div class="votes">
           <button
             class="btn vote"
@@ -93,16 +131,53 @@ function setStars(value: number) {
   background: var(--surface-2);
 }
 
+.thumb-placeholder {
+  background: linear-gradient(
+    110deg,
+    var(--surface-2) 8%,
+    var(--border) 18%,
+    var(--surface-2) 33%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position-x: -200%;
+  }
+}
+
+.media-button,
+.title-button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.media-button {
+  width: 100%;
+}
+
+.title-button h3 {
+  margin: 0;
+  font-size: 1.0625rem;
+}
+
+.title-button:hover h3,
+.media-button:hover .thumb {
+  opacity: 0.92;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
   align-items: baseline;
-}
-
-.header h3 {
-  margin: 0;
-  font-size: 1.0625rem;
 }
 
 .score {

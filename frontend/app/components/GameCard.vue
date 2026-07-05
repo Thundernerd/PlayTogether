@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GameInfo } from '~/types/api'
+import { headerImageSrc, refetchHeaderImage } from '~/utils/steamImages'
 
 const props = defineProps<{
   game?: GameInfo | null
@@ -12,7 +13,50 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   toggle: [value: boolean]
+  open: []
 }>()
+
+const { api } = useApi()
+const imageUrl = ref<string | null>(null)
+const imageRetryDone = ref(false)
+
+watch(
+  () => props.game?.header_image_url,
+  () => {
+    imageUrl.value = headerImageSrc(props.game?.header_image_url)
+    imageRetryDone.value = false
+  },
+  { immediate: true },
+)
+
+function openDetails() {
+  if (props.loading) return
+  emit('open')
+}
+
+function onCardKeydown(event: KeyboardEvent) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    openDetails()
+  }
+}
+
+async function onImageError() {
+  if (imageRetryDone.value || props.loading) return
+  imageRetryDone.value = true
+  try {
+    const url = await refetchHeaderImage(
+      (appid) => api(`/api/games/${appid}`),
+      props.appid,
+    )
+    if (url) {
+      imageUrl.value = url
+      imageRetryDone.value = false
+    }
+  } catch {
+    imageUrl.value = null
+  }
+}
 
 const title = computed(() => {
   if (props.game?.name) return props.game.name
@@ -26,23 +70,36 @@ const description = computed(() => {
   return 'Details unavailable for this Steam app.'
 })
 
-const image = computed(
-  () =>
-    props.game?.header_image_url ||
-    `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${props.appid}/header.jpg`,
+const showImagePlaceholder = computed(
+  () => props.loading || !imageUrl.value,
 )
 </script>
 
 <template>
-  <article class="game-card">
-    <img :src="image" :alt="title" class="cover" loading="lazy" />
+  <article
+    class="game-card"
+    :class="{ clickable: !loading }"
+    :role="loading ? undefined : 'button'"
+    :tabindex="loading ? -1 : 0"
+    @click="openDetails"
+    @keydown="onCardKeydown"
+  >
+    <div v-if="showImagePlaceholder" class="cover cover-placeholder" aria-hidden="true" />
+    <img
+      v-else
+      :src="imageUrl!"
+      :alt="title"
+      class="cover"
+      loading="lazy"
+      @error="onImageError"
+    />
     <div class="body">
       <h3 class="title">{{ title }}</h3>
       <p class="desc" :class="{ muted: loading || !game?.short_description }">{{ description }}</p>
       <div v-if="game?.tags?.length" class="tags">
         <span v-for="tag in game.tags.slice(0, 5)" :key="tag" class="tag">{{ tag }}</span>
       </div>
-      <label v-if="showCheckbox" class="checkbox-row">
+      <label v-if="showCheckbox" class="checkbox-row" @click.stop>
         <input
           type="checkbox"
           :checked="wantsToPlay"
@@ -65,11 +122,37 @@ const image = computed(
   flex-direction: column;
 }
 
+.game-card.clickable {
+  cursor: pointer;
+}
+
+.game-card.clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .cover {
   width: 100%;
   aspect-ratio: 460 / 215;
   object-fit: cover;
   background: var(--surface-2);
+}
+
+.cover-placeholder {
+  background: linear-gradient(
+    110deg,
+    var(--surface-2) 8%,
+    var(--border) 18%,
+    var(--surface-2) 33%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position-x: -200%;
+  }
 }
 
 .body {
