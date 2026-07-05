@@ -1,0 +1,17 @@
+# Rust
+backend/target/
+backend/*.db
+backend/*.db-*
+
+# Node
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.output/
+frontend/dist/
+
+# Env
+.env
+.env.*
+
+# OS
+.DS_Store
