@@ -21,7 +21,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use crate::config::Config;
 use crate::jobs::registry::SyncJobRegistry;
 use crate::state::AppState;
-use crate::steam::TagCache;
+use crate::steam::{GameCache, TagCache};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -55,6 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     TagCache::warm(&state).await?;
+    GameCache::backfill_header_urls(&state.db).await?;
 
     let cors = CorsLayer::new()
         .allow_origin(config.cors_origin.parse::<HeaderValue>()?)

@@ -36,6 +36,19 @@ impl SteamClient {
     }
 
     pub async fn fetch_store_items(&self, appids: &[u32]) -> AppResult<Vec<StoreItem>> {
+        self.fetch_store_items_with_request(appids, store_list_data_request()).await
+    }
+
+    pub async fn fetch_store_item_details(&self, appid: u32) -> AppResult<Vec<StoreItem>> {
+        self.fetch_store_items_with_request(&[appid], store_detail_data_request())
+            .await
+    }
+
+    async fn fetch_store_items_with_request(
+        &self,
+        appids: &[u32],
+        data_request: serde_json::Value,
+    ) -> AppResult<Vec<StoreItem>> {
         if appids.is_empty() {
             return Ok(vec![]);
         }
@@ -51,13 +64,7 @@ impl SteamClient {
                 "language": "english",
                 "country_code": "NL"
             },
-            "data_request": {
-                "include_basic_info": true,
-                "include_assets": true,
-                "include_tag_count": 20,
-                "include_reviews": true,
-                "include_release": true
-            }
+            "data_request": data_request
         });
 
         let response = self
@@ -156,6 +163,29 @@ pub struct GetItemsResponseInner {
     pub store_items: Option<Vec<StoreItem>>,
 }
 
+fn store_list_data_request() -> serde_json::Value {
+    serde_json::json!({
+        "include_basic_info": true,
+        "include_assets": true,
+        "include_tag_count": 20,
+        "include_reviews": true,
+        "include_release": true
+    })
+}
+
+fn store_detail_data_request() -> serde_json::Value {
+    serde_json::json!({
+        "include_basic_info": true,
+        "include_assets": true,
+        "include_tag_count": 50,
+        "include_reviews": true,
+        "include_release": true,
+        "include_screenshots": true,
+        "include_trailers": true,
+        "include_full_description": true
+    })
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct StoreItem {
     pub appid: u32,
@@ -165,6 +195,57 @@ pub struct StoreItem {
     pub assets: Option<Assets>,
     pub tags: Option<Vec<TagWeight>>,
     pub release: Option<ReleaseInfo>,
+    pub screenshots: Option<StoreScreenshots>,
+    pub trailers: Option<StoreTrailers>,
+    pub full_description_bbcode: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StoreScreenshots {
+    pub all_ages_screenshots: Option<Vec<StoreScreenshot>>,
+    pub mature_content_screenshots: Option<Vec<StoreScreenshot>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StoreScreenshot {
+    pub filename: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StoreTrailers {
+    pub highlights: Option<Vec<StoreTrailer>>,
+    pub other_trailers: Option<Vec<StoreTrailer>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StoreTrailer {
+    pub trailer_name: Option<String>,
+    pub trailer_url_format: Option<String>,
+    pub trailer_category: Option<i32>,
+    pub microtrailer: Option<Vec<TrailerVideoSource>>,
+    pub adaptive_trailers: Option<Vec<AdaptiveTrailer>>,
+    pub screenshot_medium: Option<String>,
+    pub screenshot_full: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TrailerVideoSource {
+    pub filename: Option<String>,
+    #[serde(rename = "type")]
+    pub source_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AdaptiveTrailer {
+    pub cdn_path: Option<String>,
+}
+
+pub fn store_item_has_details(item: &StoreItem) -> bool {
+    item.full_description_bbcode
+        .as_ref()
+        .is_some_and(|value| !value.trim().is_empty())
+        || item.screenshots.is_some()
+        || item.trailers.is_some()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -246,26 +327,4 @@ pub fn derive_is_released_from_app_details(detail: &AppDetailsData) -> Option<bo
     } else {
         None
     }
-}
-
-const STORE_ASSETS_BASE: &str = "https://shared.fastly.steamstatic.com/store_item_assets/";
-
-pub fn header_image_url(appid: u32, assets: &Option<Assets>) -> String {
-    if let Some(assets) = assets {
-        if let (Some(format), Some(header)) = (&assets.asset_url_format, &assets.header) {
-            let path = format.replace("${FILENAME}", header);
-            return format!("{STORE_ASSETS_BASE}{path}");
-        }
-    }
-    format!("{STORE_ASSETS_BASE}steam/apps/{appid}/header.jpg")
-}
-
-pub fn normalize_header_image_url(stored: &str, appid: u32) -> String {
-    if stored.is_empty() {
-        return format!("{STORE_ASSETS_BASE}steam/apps/{appid}/header.jpg");
-    }
-    stored.replace(
-        "/store_item_assets/steam/steam/",
-        "/store_item_assets/steam/",
-    )
 }

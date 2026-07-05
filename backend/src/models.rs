@@ -101,6 +101,29 @@ pub struct GameInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct GameTrailer {
+    pub name: String,
+    pub thumbnail_url: Option<String>,
+    pub video_url: String,
+    pub video_webm_url: Option<String>,
+    pub category: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GameDetail {
+    pub appid: u32,
+    pub name: String,
+    pub short_description: String,
+    pub full_description: Option<String>,
+    pub header_image_url: String,
+    pub tags: Vec<String>,
+    pub is_released: Option<bool>,
+    pub screenshots: Vec<String>,
+    pub trailers: Vec<GameTrailer>,
+    pub store_url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct WishlistItemView {
     pub appid: u32,
     pub priority: i64,

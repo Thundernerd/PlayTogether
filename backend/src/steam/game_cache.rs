@@ -3,12 +3,17 @@ use chrono::{Duration, Utc};
 use sqlx::SqlitePool;
 use tracing::info;
 
-use crate::error::AppResult;
-use crate::models::GameInfo;
+use crate::error::{AppError, AppResult};
+use crate::models::{GameDetail, GameInfo, GameTrailer};
 use crate::state::AppState;
 use crate::steam::client::{
     AppDetailsData, SteamClient, StoreItem, derive_is_released, derive_is_released_from_app_details,
-    header_image_url, normalize_header_image_url,
+    store_item_has_details,
+};
+use crate::steam::{
+    collect_trailers, header_image_url, header_image_url_from_app_details, header_image_url_from_item,
+    is_allowed_video_cdn_url, normalize_header_image_url, screenshot_urls_from_item, trailer_entries,
+    trailer_proxy_video_url, trailer_video_mp4_url, trailer_video_webm_url, STORE_ASSETS_BASE,
 };
 
 pub struct GameCache;
@@ -41,6 +46,106 @@ impl GameCache {
     }
 
     pub async fn load_game(db: &SqlitePool, appid: u32) -> AppResult<Option<GameInfo>> {
+        let row = Self::load_row(db, appid).await?;
+        Ok(row.map(|r| r.into_game_info()))
+    }
+
+    pub async fn ensure_detail_cached(state: &AppState, appid: u32) -> AppResult<()> {
+        if let Some(row) = Self::load_row(&state.db, appid).await? {
+            if let Ok(item) = serde_json::from_str::<StoreItem>(&row.raw_json) {
+                if store_item_has_details(&item) {
+                    return Ok(());
+                }
+            }
+        }
+
+        let client = SteamClient::new(state.http.clone());
+        let items = client.fetch_store_item_details(appid).await?;
+        if items.is_empty() {
+            return Err(AppError::NotFound);
+        }
+
+        Self::upsert_items(state, &items).await?;
+        Ok(())
+    }
+
+    pub async fn load_game_detail(state: &AppState, appid: u32) -> AppResult<Option<GameDetail>> {
+        let Some(row) = Self::load_row(&state.db, appid).await? else {
+            return Ok(None);
+        };
+
+        let tags = state.tags.read().await;
+        Ok(Some(row.into_game_detail(appid, &tags)))
+    }
+
+    pub async fn trailer_cdn_url(
+        db: &SqlitePool,
+        appid: u32,
+        index: usize,
+        webm: bool,
+    ) -> AppResult<String> {
+        let row = Self::load_row(db, appid)
+            .await?
+            .ok_or(AppError::NotFound)?;
+        let item = serde_json::from_str::<StoreItem>(&row.raw_json).map_err(|_| AppError::NotFound)?;
+        let trailers = item.trailers.as_ref().ok_or(AppError::NotFound)?;
+        let trailer = collect_trailers(trailers)
+            .get(index)
+            .copied()
+            .ok_or(AppError::NotFound)?;
+
+        let url = if webm {
+            trailer_video_webm_url(trailer).ok_or(AppError::NotFound)?
+        } else {
+            trailer_video_mp4_url(trailer).ok_or(AppError::NotFound)?
+        };
+
+        if !is_allowed_video_cdn_url(&url) {
+            return Err(AppError::Internal("invalid trailer CDN URL".into()));
+        }
+
+        Ok(url)
+    }
+
+    pub async fn backfill_header_urls(db: &SqlitePool) -> AppResult<()> {
+        let rows = sqlx::query_as::<_, (i64, String, String)>(
+            "SELECT appid, header_image_url, raw_json FROM steam_games WHERE raw_json != '{}'",
+        )
+        .fetch_all(db)
+        .await?;
+
+        let mut updated = 0usize;
+        for (appid, stored_header, raw_json) in rows {
+            let appid = appid as u32;
+            let resolved = serde_json::from_str::<StoreItem>(&raw_json)
+                .ok()
+                .map(|item| header_image_url_from_item(&item))
+                .or_else(|| {
+                    serde_json::from_str::<AppDetailsData>(&raw_json)
+                        .ok()
+                        .and_then(|detail| header_image_url_from_app_details(&detail))
+                });
+
+            if let Some(resolved) = resolved {
+                if resolved != stored_header {
+                    sqlx::query("UPDATE steam_games SET header_image_url = ? WHERE appid = ?")
+                        .bind(&resolved)
+                        .bind(appid as i64)
+                        .execute(db)
+                        .await?;
+                    updated += 1;
+                }
+            }
+        }
+
+        if updated > 0 {
+            info!(updated, "backfilled header_image_url from raw_json");
+        }
+
+        Ok(())
+    }
+
+    async fn load_row(db: &SqlitePool, appid: u32) -> AppResult<Option<GameRow>> {
         let row = sqlx::query_as::<_, GameRow>(
             "SELECT appid, name, short_description, header_image_url, tags_json, raw_json, is_released FROM steam_games WHERE appid = ?",
         )
@@ -48,7 +153,7 @@ impl GameCache {
         .fetch_optional(db)
         .await?;
 
-        Ok(row.map(|r| r.into_game_info()))
+        Ok(row)
     }
 
     pub async fn ensure_cached(state: &AppState, appids: &[u32]) -> AppResult<()> {
@@ -172,7 +277,6 @@ impl GameCache {
                     tags_list
                         .iter()
                         .filter_map(|t| tags.get(&t.tagid).cloned())
-                        .take(10)
                         .collect()
                 })
                 .unwrap_or_default();
@@ -210,10 +314,15 @@ impl GameCache {
             detail.name.clone()
         };
         let short_description = detail.short_description.clone().unwrap_or_default();
-        let header_image_url = detail
-            .header_image
-            .clone()
-            .unwrap_or_else(|| format!("{STORE_ASSETS_BASE}steam/apps/{appid}/header.jpg"));
+        let header_image_url = header_image_url_from_app_details(detail).unwrap_or_else(|| {
+            normalize_header_image_url(
+                detail
+                    .header_image
+                    .as_deref()
+                    .unwrap_or(""),
+                appid,
+            )
+        });
         let raw_json = serde_json::to_string(detail)?;
         let is_released = derive_is_released_from_app_details(detail);
 
@@ -292,8 +401,6 @@ impl GameCache {
     }
 }
 
-const STORE_ASSETS_BASE: &str = "https://shared.fastly.steamstatic.com/store_item_assets/";
-
 struct GameRow {
     appid: i64,
     name: String,
@@ -321,15 +428,16 @@ impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for GameRow {
 impl GameRow {
     fn into_game_info(self) -> GameInfo {
         let tags: Vec<String> = serde_json::from_str(&self.tags_json).unwrap_or_default();
+        let appid = self.appid as u32;
         let header_image_url = serde_json::from_str::<StoreItem>(&self.raw_json)
             .ok()
-            .map(|item| header_image_url(self.appid as u32, &item.assets))
+            .map(|item| header_image_url_from_item(&item))
             .or_else(|| {
                 serde_json::from_str::<AppDetailsData>(&self.raw_json)
                     .ok()
-                    .and_then(|d| d.header_image)
+                    .and_then(|detail| header_image_url_from_app_details(&detail))
             })
-            .unwrap_or_else(|| normalize_header_image_url(&self.header_image_url, self.appid as u32));
+            .unwrap_or_else(|| normalize_header_image_url(&self.header_image_url, appid));
 
         let is_released = serde_json::from_str::<StoreItem>(&self.raw_json)
             .ok()
@@ -348,6 +456,66 @@ impl GameRow {
             header_image_url,
             tags,
             is_released,
+        }
+    }
+
+    fn into_game_detail(self, appid: u32, tag_map: &HashMap<u32, String>) -> GameDetail {
+        let store_item = serde_json::from_str::<StoreItem>(&self.raw_json).ok();
+        let base = self.into_game_info();
+
+        let tags = store_item
+            .as_ref()
+            .and_then(|item| item.tags.as_ref())
+            .map(|tags_list| {
+                tags_list
+                    .iter()
+                    .filter_map(|t| tag_map.get(&t.tagid).cloned())
+                    .collect::<Vec<_>>()
+            })
+            .filter(|tags| !tags.is_empty())
+            .unwrap_or_else(|| base.tags.clone());
+
+        let full_description = store_item
+            .as_ref()
+            .and_then(|item| item.full_description_bbcode.clone())
+            .filter(|value| !value.trim().is_empty());
+
+        let screenshots = store_item
+            .as_ref()
+            .map(|item| screenshot_urls_from_item(item))
+            .unwrap_or_default();
+
+        let trailers = store_item
+            .as_ref()
+            .and_then(|item| item.trailers.as_ref())
+            .map(|items| {
+                trailer_entries(items)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, entry)| GameTrailer {
+                        name: entry.name,
+                        thumbnail_url: entry.thumbnail_url,
+                        video_url: trailer_proxy_video_url(appid, index, false),
+                        video_webm_url: entry
+                            .video_webm_url
+                            .map(|_| trailer_proxy_video_url(appid, index, true)),
+                        category: entry.category,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        GameDetail {
+            appid: base.appid,
+            name: base.name,
+            short_description: base.short_description,
+            full_description,
+            header_image_url: base.header_image_url,
+            tags,
+            is_released: base.is_released,
+            screenshots,
+            trailers,
+            store_url: format!("https://store.steampowered.com/app/{appid}"),
         }
     }
 }

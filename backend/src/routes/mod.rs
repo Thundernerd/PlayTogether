@@ -1,3 +1,4 @@
+mod games;
 mod groups;
 mod members;
 mod wishlists;
@@ -37,5 +38,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/groups/{group_id}/games/{appid}/rating",
             put(wishlists::set_rating),
+        )
+        .route("/api/games/{appid}", get(games::get_game_detail))
+        .route(
+            "/api/games/{appid}/trailers/{index}/video",
+            get(games::stream_trailer_video),
         )
 }
