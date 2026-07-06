@@ -6,7 +6,8 @@ Compare Steam wishlists with friends, mark games you want to play together, and 
 
 - Rust (stable)
 - Node.js 20+
-- Steam profiles with **public** wishlists (required for sync)
+- Steam profiles with **public** wishlists and **public game details** (required for sync)
+- A [Steam Web API key](https://steamcommunity.com/dev/apikey) (required for owned-games library sync)
 
 ## Run locally
 
@@ -15,6 +16,12 @@ Compare Steam wishlists with friends, mark games you want to play together, and 
 ```bash
 cd backend
 cargo run
+```
+
+Create a `backend/.env` file (optional) to set variables locally — it is loaded automatically on startup:
+
+```bash
+STEAM_API_KEY=your-steam-web-api-key
 ```
 
 Environment variables (optional):
@@ -27,6 +34,7 @@ Environment variables (optional):
 | `PRICE_CACHE_TTL_HOURS` | `24` |
 | `STEAM_CHUNK_SIZE` | `50` |
 | `STEAM_CHUNK_DELAY_MS` | `200` |
+| `STEAM_API_KEY` | *(unset — wishlist sync works; library sync is skipped)* |
 
 If you have an existing `playwishlist.db` from a previous install, rename it to `playtogether.db` or set `DATABASE_URL=sqlite:playwishlist.db?mode=rwc`.
 
@@ -43,9 +51,9 @@ Set `BACKEND_URL=http://localhost:8080` if the API runs elsewhere.
 ## How it works
 
 1. **Create or join a group** using an invite link (no accounts — a browser token identifies you).
-2. **Add your Steam ID64** — the backend fetches your public wishlist from Steam.
+2. **Add your Steam ID64** — the backend fetches your public wishlist and owned games from Steam.
 3. **Game metadata** is fetched in chunks and stored in SQLite (`steam_games`). Cached data is reused across all members and groups for 7 days.
-4. **Check games** you want to play together on your wishlist cards.
+4. **Check games** you want to play together on your wishlist or library cards.
 5. **Vote and rate** games in the shared “Play together” list.
 
 ## API overview
@@ -55,6 +63,7 @@ Set `BACKEND_URL=http://localhost:8080` if the API runs elsewhere.
 - `PATCH /api/members/me` — set Steam ID (triggers sync)
 - `GET /api/members/me/sync-status` — background sync progress
 - `GET /api/groups/:id/wishlists` — all member wishlists
+- `GET /api/groups/:id/libraries` — all member owned-game libraries
 - `GET /api/groups/:id/shared-games` — aggregated picks with votes
 
 All authenticated routes require the `X-Member-Token` header returned on create/join.
