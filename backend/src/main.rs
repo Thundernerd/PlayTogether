@@ -14,7 +14,7 @@ use std::sync::Arc;
 use axum::http::{HeaderName, HeaderValue, Method};
 use sqlx::sqlite::SqlitePoolOptions;
 use tokio::sync::RwLock;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -57,8 +57,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     TagCache::warm(&state).await?;
     GameCache::backfill_header_urls(&state.db).await?;
 
+    let cors_origins: Vec<HeaderValue> = config
+        .cors_origin
+        .split(',')
+        .map(str::trim)
+        .filter(|origin| !origin.is_empty())
+        .map(str::parse)
+        .collect::<Result<Vec<_>, _>>()?;
+
     let cors = CorsLayer::new()
-        .allow_origin(config.cors_origin.parse::<HeaderValue>()?)
+        .allow_origin(AllowOrigin::list(cors_origins))
         .allow_methods([
             Method::GET,
             Method::POST,
