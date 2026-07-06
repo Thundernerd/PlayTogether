@@ -85,18 +85,17 @@ const showImagePlaceholder = computed(
     @keydown="onCardKeydown"
   >
     <div v-if="showImagePlaceholder" class="cover cover-placeholder" aria-hidden="true" />
-    <div v-else class="cover-wrap">
-      <img
-        :src="imageUrl!"
-        :alt="title"
-        class="cover"
-        loading="lazy"
-        @error="onImageError"
-      />
-      <GameDiscountBadge :price="game?.price" />
-    </div>
+    <img
+      v-else
+      :src="imageUrl!"
+      :alt="title"
+      class="cover"
+      loading="lazy"
+      @error="onImageError"
+    />
     <div class="body">
       <h3 class="title">{{ title }}</h3>
+      <GameDiscountBadge :price="game?.price" />
       <p class="desc" :class="{ muted: loading || !game?.short_description }">{{ description }}</p>
       <div v-if="game?.tags?.length" class="tags">
         <span v-for="tag in game.tags.slice(0, 5)" :key="tag" class="tag">{{ tag }}</span>
@@ -131,10 +130,6 @@ const showImagePlaceholder = computed(
 .game-card.clickable:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-.cover-wrap {
-  position: relative;
 }
 
 .cover {

@@ -200,20 +200,7 @@ onUnmounted(() => {
                 <h2 class="title">{{ detail.name }}</h2>
                 <div class="meta-badges">
                   <span class="release-badge">{{ releaseLabel }}</span>
-                  <GameDiscountBadge
-                    v-if="detail.price"
-                    :price="detail.price"
-                    variant="inline"
-                  />
-                  <span
-                    v-if="detail.price?.formatted_final"
-                    class="price-label"
-                  >
-                    <s v-if="detail.price.discount_percent && detail.price.formatted_initial">
-                      {{ detail.price.formatted_initial }}
-                    </s>
-                    {{ detail.price.formatted_final }}
-                  </span>
+                  <GameDiscountBadge v-if="detail.price" :price="detail.price" />
                 </div>
                 <div v-if="detail.tags.length" class="tags">
                   <span v-for="tag in detail.tags" :key="tag" class="tag">{{ tag }}</span>
@@ -360,18 +347,12 @@ onUnmounted(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
   margin-top: 0.35rem;
 }
 
-.price-label {
+.meta-badges :deep(.price-line) {
   font-size: 0.875rem;
-  color: #bbf7d0;
-}
-
-.price-label s {
-  color: var(--muted);
-  margin-right: 0.35rem;
 }
 
 .release-badge {
