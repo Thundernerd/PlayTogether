@@ -91,6 +91,14 @@ pub struct SyncStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct GamePlayModes {
+    pub online_coop: bool,
+    pub coop: bool,
+    pub multiplayer: bool,
+    pub remote_play_together: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct GamePrice {
     pub initial_cents: Option<i32>,
     pub final_cents: Option<i32>,
@@ -109,6 +117,7 @@ pub struct GameInfo {
     pub tags: Vec<String>,
     pub is_released: Option<bool>,
     pub price: Option<GamePrice>,
+    pub play_modes: Option<GamePlayModes>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -130,6 +139,7 @@ pub struct GameDetail {
     pub tags: Vec<String>,
     pub is_released: Option<bool>,
     pub price: Option<GamePrice>,
+    pub play_modes: Option<GamePlayModes>,
     pub screenshots: Vec<String>,
     pub trailers: Vec<GameTrailer>,
     pub store_url: String,

@@ -4,12 +4,13 @@ use sqlx::SqlitePool;
 use tracing::info;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{GameDetail, GameInfo, GamePrice, GameTrailer};
+use crate::models::{GameDetail, GameInfo, GamePlayModes, GamePrice, GameTrailer};
 use crate::state::AppState;
 use crate::steam::client::{
     AppDetailsData, SteamClient, StoreItem, derive_is_released, derive_is_released_from_app_details,
     store_item_has_details,
 };
+use crate::steam::categories::{play_modes_from_item, store_item_has_categories};
 use crate::steam::pricing::{price_from_store_item, store_item_has_pricing};
 use crate::steam::media_urls::{
     collect_trailers, header_image_url, header_image_url_from_app_details, header_image_url_from_item,
@@ -76,7 +77,11 @@ impl GameCache {
                 Ok(item) => !store_item_has_pricing(&item),
                 Err(_) => true,
             };
-            if row.fetched_at <= cutoff || missing_pricing {
+            let missing_categories = match serde_json::from_str::<StoreItem>(&row.raw_json) {
+                Ok(item) => !store_item_has_categories(&item),
+                Err(_) => true,
+            };
+            if row.fetched_at <= cutoff || missing_pricing || missing_categories {
                 stale.insert(appid);
             }
         }
@@ -511,6 +516,7 @@ impl GameRow {
             .or_else(|| self.is_released.map(|value| value != 0));
 
         let price = price_from_raw_json(&self.raw_json);
+        let play_modes = play_modes_from_raw_json(&self.raw_json);
 
         GameInfo {
             appid: self.appid as u32,
@@ -520,6 +526,7 @@ impl GameRow {
             tags,
             is_released,
             price,
+            play_modes,
         }
     }
 
@@ -578,11 +585,18 @@ impl GameRow {
             tags,
             is_released: base.is_released,
             price: base.price,
+            play_modes: base.play_modes,
             screenshots,
             trailers,
             store_url: format!("https://store.steampowered.com/app/{appid}"),
         }
     }
+}
+
+fn play_modes_from_raw_json(raw_json: &str) -> Option<GamePlayModes> {
+    serde_json::from_str::<StoreItem>(raw_json)
+        .ok()
+        .and_then(|item| play_modes_from_item(&item))
 }
 
 fn price_from_raw_json(raw_json: &str) -> Option<GamePrice> {

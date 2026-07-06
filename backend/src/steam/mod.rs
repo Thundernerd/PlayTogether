@@ -1,3 +1,4 @@
+mod categories;
 mod client;
 mod game_cache;
 mod media_urls;

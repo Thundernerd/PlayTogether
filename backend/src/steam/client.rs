@@ -201,6 +201,13 @@ pub struct StoreItem {
     pub trailers: Option<StoreTrailers>,
     pub full_description_bbcode: Option<String>,
     pub best_purchase_option: Option<PurchaseOption>,
+    pub categories: Option<StoreCategories>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StoreCategories {
+    pub supported_player_categoryids: Option<Vec<u32>>,
+    pub feature_categoryids: Option<Vec<u32>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
