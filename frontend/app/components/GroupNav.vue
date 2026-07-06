@@ -4,15 +4,33 @@ const props = defineProps<{
   wishlistCount?: number
   libraryCount?: number
   sharedCount?: number
+  libraryLoading?: boolean
+  wishlistLoading?: boolean
+  sharedLoading?: boolean
 }>()
 
 const route = useRoute()
 
 const links = computed(() => [
   { to: props.basePath, label: 'Overview', exact: true },
-  { to: `${props.basePath}/library`, label: 'My library', count: props.libraryCount },
-  { to: `${props.basePath}/wishlist`, label: 'My wishlist', count: props.wishlistCount },
-  { to: `${props.basePath}/play-together`, label: 'Play together', count: props.sharedCount },
+  {
+    to: `${props.basePath}/library`,
+    label: 'My library',
+    count: props.libraryCount,
+    loading: props.libraryLoading,
+  },
+  {
+    to: `${props.basePath}/wishlist`,
+    label: 'My wishlist',
+    count: props.wishlistCount,
+    loading: props.wishlistLoading,
+  },
+  {
+    to: `${props.basePath}/play-together`,
+    label: 'Play together',
+    count: props.sharedCount,
+    loading: props.sharedLoading,
+  },
 ])
 
 function isActive(link: { to: string; exact?: boolean }) {
@@ -33,7 +51,10 @@ function isActive(link: { to: string; exact?: boolean }) {
       :class="{ active: isActive(link) }"
     >
       {{ link.label }}
-      <span v-if="link.count != null" class="count">{{ link.count }}</span>
+      <span v-if="link.count != null" class="count">
+        <LoadingSpinner v-if="link.loading" size="sm" />
+        <template v-else>{{ link.count }}</template>
+      </span>
     </NuxtLink>
   </nav>
 </template>
@@ -71,6 +92,11 @@ function isActive(link: { to: string; exact?: boolean }) {
 }
 
 .count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  min-height: 1.1rem;
   font-size: 0.75rem;
   padding: 0.05rem 0.4rem;
   border-radius: 999px;

@@ -9,6 +9,9 @@ defineProps<{
   wishlistCount?: number
   libraryCount?: number
   sharedCount?: number
+  libraryLoading?: boolean
+  wishlistLoading?: boolean
+  sharedLoading?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -32,6 +35,9 @@ const emit = defineEmits<{
         :wishlist-count="wishlistCount"
         :library-count="libraryCount"
         :shared-count="sharedCount"
+        :library-loading="libraryLoading"
+        :wishlist-loading="wishlistLoading"
+        :shared-loading="sharedLoading"
       />
     </div>
     <div v-if="isMember" class="header-actions">

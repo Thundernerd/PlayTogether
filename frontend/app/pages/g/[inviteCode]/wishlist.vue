@@ -7,7 +7,7 @@ type ReleaseFilter = 'all' | 'released' | 'unreleased' | 'unknown'
 type WishlistSort = 'name_asc' | 'name_desc' | 'date_desc' | 'date_asc'
 
 const group = useGroup()
-const { myWishlist, syncComplete, actionLoading, toggleSelection, ensureLoaded } = group
+const { myWishlist, syncComplete, actionLoading, toggleSelection } = group
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
 
@@ -66,8 +66,7 @@ watch(
   },
 )
 
-onMounted(async () => {
-  await ensureLoaded({ wishlists: true, shared: false })
+onMounted(() => {
   if (myWishlist.value?.member.sync_status.status === 'running') {
     startPolling()
   }

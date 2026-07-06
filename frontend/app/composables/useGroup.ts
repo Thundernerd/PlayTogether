@@ -22,8 +22,20 @@ export function useGroup() {
   const sharedGames = useState<SharedGame[]>('groupSharedGames', () => [])
 
   const loading = ref(false)
+  const librariesLoading = ref(false)
+  const wishlistsLoading = ref(false)
+  const sharedLoading = ref(false)
   const actionLoading = ref(false)
   const error = ref<string | null>(null)
+
+  function resetMemberData() {
+    wishlists.value = []
+    libraries.value = []
+    sharedGames.value = []
+    librariesLoading.value = false
+    wishlistsLoading.value = false
+    sharedLoading.value = false
+  }
 
   const isMember = computed(
     () => !!me.value && me.value.group.invite_code.toUpperCase() === inviteCode.value,
@@ -47,6 +59,11 @@ export function useGroup() {
 
   const groupBasePath = computed(() => `/g/${inviteCode.value}`)
 
+  let librariesInflight: Promise<void> | null = null
+  let wishlistsInflight: Promise<void> | null = null
+  let sharedInflight: Promise<void> | null = null
+  let refreshInflight: Promise<void> | null = null
+
   async function loadGroup() {
     groupDetail.value = await api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`)
   }
@@ -65,21 +82,63 @@ export function useGroup() {
 
   async function loadWishlists() {
     if (!me.value) return
-    wishlists.value = await api<MemberWishlist[]>(`/api/groups/${me.value.group.id}/wishlists`)
+    if (wishlistsInflight) return wishlistsInflight
+
+    wishlistsLoading.value = true
+    wishlistsInflight = (async () => {
+      try {
+        wishlists.value = await api<MemberWishlist[]>(`/api/groups/${me.value!.group.id}/wishlists`)
+      } finally {
+        wishlistsLoading.value = false
+        wishlistsInflight = null
+      }
+    })()
+    return wishlistsInflight
   }
 
   async function loadLibraries() {
     if (!me.value) return
-    libraries.value = await api<MemberLibrary[]>(`/api/groups/${me.value.group.id}/libraries`)
+    if (librariesInflight) return librariesInflight
+
+    librariesLoading.value = true
+    librariesInflight = (async () => {
+      try {
+        libraries.value = await api<MemberLibrary[]>(`/api/groups/${me.value!.group.id}/libraries`)
+      } finally {
+        librariesLoading.value = false
+        librariesInflight = null
+      }
+    })()
+    return librariesInflight
   }
 
   async function loadSharedGames() {
     if (!me.value) return
-    sharedGames.value = await api<SharedGame[]>(`/api/groups/${me.value.group.id}/shared-games`)
+    if (sharedInflight) return sharedInflight
+
+    sharedLoading.value = true
+    sharedInflight = (async () => {
+      try {
+        sharedGames.value = await api<SharedGame[]>(`/api/groups/${me.value!.group.id}/shared-games`)
+      } finally {
+        sharedLoading.value = false
+        sharedInflight = null
+      }
+    })()
+    return sharedInflight
   }
 
   async function refreshMemberData() {
-    await Promise.all([loadGroup(), loadLibraries(), loadWishlists(), loadSharedGames()])
+    if (refreshInflight) return refreshInflight
+    refreshInflight = Promise.all([
+      loadGroup(),
+      loadLibraries(),
+      loadWishlists(),
+      loadSharedGames(),
+    ]).finally(() => {
+      refreshInflight = null
+    })
+    return refreshInflight
   }
 
   async function ensureLoaded(options: { wishlists?: boolean; libraries?: boolean; shared?: boolean } = {}) {
@@ -94,15 +153,11 @@ export function useGroup() {
         await loadMe()
       }
       if (isMember.value) {
-        if (options.libraries ?? true) {
-          await loadLibraries()
-        }
-        if (options.wishlists ?? true) {
-          await loadWishlists()
-        }
-        if (options.shared ?? true) {
-          await loadSharedGames()
-        }
+        const fetches: Promise<void>[] = []
+        if (options.libraries ?? true) fetches.push(loadLibraries())
+        if (options.wishlists ?? true) fetches.push(loadWishlists())
+        if (options.shared ?? true) fetches.push(loadSharedGames())
+        await Promise.all(fetches)
       }
     } catch (e: unknown) {
       error.value = e instanceof Error ? e.message : 'Failed to load group'
@@ -146,9 +201,7 @@ export function useGroup() {
       clearToken()
       groupDetail.value = null
       me.value = null
-      wishlists.value = []
-      libraries.value = []
-      sharedGames.value = []
+      resetMemberData()
       await router.push('/')
     } catch (e: unknown) {
       error.value = e instanceof Error ? e.message : 'Failed to leave group'
@@ -170,9 +223,7 @@ export function useGroup() {
       clearToken()
       groupDetail.value = null
       me.value = null
-      wishlists.value = []
-      libraries.value = []
-      sharedGames.value = []
+      resetMemberData()
       await router.push('/')
     } catch (e: unknown) {
       error.value = e instanceof Error ? e.message : 'Failed to delete group'
@@ -267,6 +318,9 @@ export function useGroup() {
     syncComplete,
     anyMemberSyncing,
     loading,
+    librariesLoading,
+    wishlistsLoading,
+    sharedLoading,
     actionLoading,
     error,
     ensureLoaded,

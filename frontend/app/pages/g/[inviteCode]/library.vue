@@ -12,7 +12,7 @@ type LibrarySort =
   | 'name_desc'
 
 const group = useGroup()
-const { myLibrary, syncComplete, actionLoading, toggleSelection, ensureLoaded } = group
+const { myLibrary, syncComplete, actionLoading, toggleSelection } = group
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
 
@@ -84,8 +84,7 @@ watch(
   },
 )
 
-onMounted(async () => {
-  await ensureLoaded({ wishlists: false, libraries: true, shared: false })
+onMounted(() => {
   if (myLibrary.value?.member.sync_status.status === 'running') {
     startPolling()
   }

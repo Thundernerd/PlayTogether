@@ -1,9 +1,7 @@
 <script setup lang="ts">
 const group = useGroup()
-const { sharedGames, actionLoading, vote, rate, ensureLoaded, groupBasePath } = group
+const { sharedGames, actionLoading, vote, rate, groupBasePath } = group
 const { open: openGameDetail } = useGameDetail()
-
-onMounted(() => ensureLoaded({ wishlists: false, shared: true }))
 </script>
 
 <template>

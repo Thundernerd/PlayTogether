@@ -7,6 +7,9 @@ const {
   sharedGames,
   syncComplete,
   anyMemberSyncing,
+  librariesLoading,
+  wishlistsLoading,
+  sharedLoading,
   actionLoading,
   saveSteamId,
   refreshWishlistSync,
@@ -64,17 +67,26 @@ watch(
       <div class="link-grid">
         <NuxtLink :to="`${groupBasePath}/library`" class="quick-link card">
           <strong>My library</strong>
-          <span>{{ myLibrary?.items.length ?? 0 }} games</span>
+          <span v-if="librariesLoading" class="count-loading">
+            <LoadingSpinner size="sm" /> Loading…
+          </span>
+          <span v-else>{{ myLibrary?.items.length ?? 0 }} games</span>
           <span class="hint">Browse owned games and mark titles to play together</span>
         </NuxtLink>
         <NuxtLink :to="`${groupBasePath}/wishlist`" class="quick-link card">
           <strong>My wishlist</strong>
-          <span>{{ myWishlist?.items.length ?? 0 }} games</span>
+          <span v-if="wishlistsLoading" class="count-loading">
+            <LoadingSpinner size="sm" /> Loading…
+          </span>
+          <span v-else>{{ myWishlist?.items.length ?? 0 }} games</span>
           <span class="hint">Browse, filter, and mark games to play together</span>
         </NuxtLink>
         <NuxtLink :to="`${groupBasePath}/play-together`" class="quick-link card">
           <strong>Play together</strong>
-          <span>{{ sharedGames.length }} games</span>
+          <span v-if="sharedLoading" class="count-loading">
+            <LoadingSpinner size="sm" /> Loading…
+          </span>
+          <span v-else>{{ sharedGames.length }} games</span>
           <span class="hint">Vote and rate the group's shared picks</span>
         </NuxtLink>
       </div>
@@ -126,6 +138,13 @@ watch(
 
 .quick-link strong {
   font-size: 1.0625rem;
+}
+
+.count-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
 }
 
 .hint {

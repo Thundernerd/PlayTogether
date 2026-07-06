@@ -9,6 +9,9 @@ const {
   isMember,
   anyMemberSyncing,
   loading,
+  librariesLoading,
+  wishlistsLoading,
+  sharedLoading,
   actionLoading,
   error,
   groupBasePath,
@@ -75,6 +78,9 @@ onUnmounted(() => {
       :wishlist-count="wishlistCount"
       :library-count="libraryCount"
       :shared-count="sharedCount"
+      :library-loading="librariesLoading"
+      :wishlist-loading="wishlistsLoading"
+      :shared-loading="sharedLoading"
       @copy-invite="copyInvite"
       @leave-group="leaveGroup"
       @delete-group="deleteGroup"
