@@ -54,14 +54,16 @@ function setStars(value: number) {
   <article class="shared-row card">
     <button type="button" class="media-button" @click="emit('open')">
       <div v-if="!imageUrl" class="thumb thumb-placeholder" aria-hidden="true" />
-      <img
-        v-else
-        :src="imageUrl"
-        :alt="item.game.name"
-        class="thumb"
-        loading="lazy"
-        @error="onImageError"
-      />
+      <div v-else class="thumb-wrap">
+        <img
+          :src="imageUrl"
+          :alt="item.game.name"
+          class="thumb"
+          loading="lazy"
+          @error="onImageError"
+        />
+        <GameDiscountBadge :price="item.game.price" />
+      </div>
     </button>
     <div class="content">
       <div class="header">
@@ -121,6 +123,11 @@ function setStars(value: number) {
   grid-template-columns: 180px 1fr;
   gap: 1rem;
   align-items: start;
+}
+
+.thumb-wrap {
+  position: relative;
+  width: 100%;
 }
 
 .thumb {

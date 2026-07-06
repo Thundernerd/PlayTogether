@@ -13,6 +13,7 @@ function patchGameInfoInLists(detail: GameDetail) {
       short_description: detail.short_description,
       tags: detail.tags.length ? detail.tags : game.tags,
       is_released: detail.is_released ?? game.is_released,
+      price: detail.price ?? game.price,
     }
   }
 
@@ -31,7 +32,7 @@ function patchGameInfoInLists(detail: GameDetail) {
 export function useGameDetail() {
   const { api } = useApi()
   const activeAppid = useState<number | null>('game-detail-appid', () => null)
-  const cache = useState<Record<number, GameDetail>>('game-detail-cache-v2', () => ({}))
+  const cache = useState<Record<number, GameDetail>>('game-detail-cache-v3', () => ({}))
   const loading = ref(false)
   const error = ref<string | null>(null)
 

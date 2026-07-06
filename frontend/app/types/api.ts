@@ -31,6 +31,15 @@ export interface MemberPublic {
   sync_status: SyncStatus
 }
 
+export interface GamePrice {
+  initial_cents?: number | null
+  final_cents?: number | null
+  discount_percent?: number | null
+  formatted_initial?: string | null
+  formatted_final?: string | null
+  discount_end_date?: number | null
+}
+
 export interface GameInfo {
   appid: number
   name: string
@@ -38,6 +47,7 @@ export interface GameInfo {
   header_image_url: string
   tags: string[]
   is_released?: boolean | null
+  price?: GamePrice | null
 }
 
 export interface GameTrailer {
@@ -56,6 +66,7 @@ export interface GameDetail {
   header_image_url: string
   tags: string[]
   is_released?: boolean | null
+  price?: GamePrice | null
   screenshots: string[]
   trailers: GameTrailer[]
   store_url: string
