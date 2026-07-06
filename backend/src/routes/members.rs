@@ -82,15 +82,21 @@ pub async fn set_selection(
     Json(body): Json<SetSelectionRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
     let exists: Option<i64> = sqlx::query_scalar(
-        "SELECT appid FROM wishlist_items WHERE member_id = ? AND appid = ?",
+        "SELECT appid FROM wishlist_items WHERE member_id = ? AND appid = ?
+         UNION
+         SELECT appid FROM owned_games WHERE member_id = ? AND appid = ?",
     )
+    .bind(auth.id.to_string())
+    .bind(appid as i64)
     .bind(auth.id.to_string())
     .bind(appid as i64)
     .fetch_optional(&state.db)
     .await?;
 
     if exists.is_none() {
-        return Err(AppError::BadRequest("appid not in your wishlist".into()));
+        return Err(AppError::BadRequest(
+            "appid not in your wishlist or library".into(),
+        ));
     }
 
     let wants = if body.wants_to_play { 1 } else { 0 };

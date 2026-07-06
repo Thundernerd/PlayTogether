@@ -78,6 +78,7 @@ pub enum SyncJobStatus {
 #[serde(rename_all = "snake_case")]
 pub enum SyncPhase {
     FetchingWishlist,
+    FetchingOwned,
     FetchingGames,
 }
 
@@ -158,6 +159,21 @@ pub struct WishlistItemView {
 pub struct MemberWishlist {
     pub member: MemberPublic,
     pub items: Vec<WishlistItemView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OwnedGameItemView {
+    pub appid: u32,
+    pub playtime_forever: i64,
+    pub rtime_last_played: Option<i64>,
+    pub game: Option<GameInfo>,
+    pub wants_to_play: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MemberLibrary {
+    pub member: MemberPublic,
+    pub items: Vec<OwnedGameItemView>,
 }
 
 #[derive(Debug, Clone, Serialize)]

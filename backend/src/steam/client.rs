@@ -9,6 +9,8 @@ const GET_ITEMS_URL: &str =
     "https://api.steampowered.com/IStoreBrowseService/GetItems/v1";
 const TAG_LIST_URL: &str = "https://api.steampowered.com/IStoreService/GetTagList/v1";
 const APP_DETAILS_URL: &str = "https://store.steampowered.com/api/appdetails";
+const OWNED_GAMES_URL: &str =
+    "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/";
 
 #[derive(Clone)]
 pub struct SteamClient {
@@ -33,6 +35,31 @@ impl SteamClient {
         let body: WishlistResponse = response.json().await?;
 
         Ok(body.response.items.unwrap_or_default())
+    }
+
+    pub async fn fetch_owned_games(
+        &self,
+        api_key: &str,
+        steam_id: u64,
+    ) -> AppResult<Vec<OwnedGameItem>> {
+        let response = self
+            .http
+            .get(OWNED_GAMES_URL)
+            .query(&[
+                ("key", api_key),
+                ("steamid", &steam_id.to_string()),
+                ("include_appinfo", "0"),
+                ("include_played_free_games", "1"),
+                ("skip_unvetted_apps", "0"),
+            ])
+            .send()
+            .await?
+            .error_for_status()
+            .map_err(|e| AppError::Steam(format!("owned games request failed: {e}")))?;
+
+        let body: OwnedGamesResponse = response.json().await?;
+
+        Ok(body.response.games.unwrap_or_default())
     }
 
     pub async fn fetch_store_items(&self, appids: &[u32]) -> AppResult<Vec<StoreItem>> {
@@ -151,6 +178,25 @@ pub struct WishlistItem {
     pub appid: u32,
     pub priority: i64,
     pub date_added: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OwnedGamesResponse {
+    pub response: OwnedGamesResponseInner,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OwnedGamesResponseInner {
+    #[allow(dead_code)]
+    pub game_count: Option<u32>,
+    pub games: Option<Vec<OwnedGameItem>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OwnedGameItem {
+    pub appid: u32,
+    pub playtime_forever: Option<i64>,
+    pub rtime_last_played: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]

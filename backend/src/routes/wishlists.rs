@@ -8,8 +8,8 @@ use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::middleware::auth::AuthMember;
 use crate::models::{
-    MemberSelectionInfo, MemberWishlist, SetRatingRequest, SetVoteRequest, SharedGame,
-    WishlistItemView,
+    MemberLibrary, MemberSelectionInfo, MemberWishlist, OwnedGameItemView, SetRatingRequest,
+    SetVoteRequest, SharedGame, WishlistItemView,
 };
 use crate::state::AppState;
 use crate::steam::{GameCache, load_games_map};
@@ -53,6 +53,50 @@ pub async fn get_group_wishlists(
             .collect();
 
         result.push(MemberWishlist { member, items });
+    }
+
+    Ok(Json(result))
+}
+
+pub async fn get_group_libraries(
+    State(state): State<AppState>,
+    auth: AuthMember,
+    Path(group_id): Path<Uuid>,
+) -> AppResult<Json<Vec<MemberLibrary>>> {
+    ensure_group_access(&auth, group_id)?;
+
+    let members = db::list_group_members(&state.db, group_id).await?;
+    let mut result = Vec::new();
+
+    for member in members {
+        let rows = sqlx::query_as::<_, OwnedGameRow>(
+            "SELECT og.appid, og.playtime_forever, og.rtime_last_played,
+                    COALESCE(ms.wants_to_play, 0) as wants_to_play
+             FROM owned_games og
+             LEFT JOIN member_selections ms ON ms.member_id = og.member_id AND ms.appid = og.appid
+             WHERE og.member_id = ?
+             ORDER BY og.playtime_forever DESC",
+        )
+        .bind(member.id.to_string())
+        .fetch_all(&state.db)
+        .await?;
+
+        let appids: Vec<u32> = rows.iter().map(|r| r.appid as u32).collect();
+        GameCache::ensure_cached(&state, &appids).await?;
+        let games = load_games_map(&state.db, &appids).await?;
+
+        let items: Vec<OwnedGameItemView> = rows
+            .into_iter()
+            .map(|row| OwnedGameItemView {
+                appid: row.appid as u32,
+                playtime_forever: row.playtime_forever,
+                rtime_last_played: row.rtime_last_played,
+                game: games.get(&(row.appid as u32)).cloned(),
+                wants_to_play: row.wants_to_play != 0,
+            })
+            .collect();
+
+        result.push(MemberLibrary { member, items });
     }
 
     Ok(Json(result))
@@ -251,6 +295,24 @@ impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for WishlistRow {
             appid: row.try_get("appid")?,
             priority: row.try_get("priority")?,
             date_added: row.try_get("date_added")?,
+            wants_to_play: row.try_get("wants_to_play")?,
+        })
+    }
+}
+
+struct OwnedGameRow {
+    appid: i64,
+    playtime_forever: i64,
+    rtime_last_played: Option<i64>,
+    wants_to_play: i64,
+}
+
+impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for OwnedGameRow {
+    fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        Ok(Self {
+            appid: row.try_get("appid")?,
+            playtime_forever: row.try_get("playtime_forever")?,
+            rtime_last_played: row.try_get("rtime_last_played")?,
             wants_to_play: row.try_get("wants_to_play")?,
         })
     }

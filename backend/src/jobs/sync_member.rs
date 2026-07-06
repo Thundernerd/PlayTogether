@@ -79,7 +79,51 @@ async fn run_sync(state: &AppState, member_id: Uuid, steam_id: u64) -> AppResult
         .await?;
     }
 
-    let appids: Vec<u32> = items.iter().map(|i| i.appid).collect();
+    let mut appids: Vec<u32> = items.iter().map(|i| i.appid).collect();
+
+    let mut owned_appids = Vec::new();
+    if let Some(api_key) = &state.config.steam_api_key {
+        db::upsert_sync_job(
+            &state.db,
+            member_id,
+            "running",
+            Some("fetching_owned"),
+            0,
+            0,
+            None,
+        )
+        .await?;
+
+        ensure_member_active(state, member_id).await?;
+
+        let owned = client.fetch_owned_games(api_key, steam_id).await?;
+
+        sqlx::query("DELETE FROM owned_games WHERE member_id = ?")
+            .bind(member_id.to_string())
+            .execute(&state.db)
+            .await?;
+
+        for item in &owned {
+            sqlx::query(
+                "INSERT INTO owned_games (member_id, appid, playtime_forever, rtime_last_played) VALUES (?, ?, ?, ?)",
+            )
+            .bind(member_id.to_string())
+            .bind(item.appid as i64)
+            .bind(item.playtime_forever.unwrap_or(0))
+            .bind(item.rtime_last_played)
+            .execute(&state.db)
+            .await?;
+            owned_appids.push(item.appid);
+        }
+    } else {
+        tracing::warn!(%member_id, "STEAM_API_KEY not set; skipping owned games sync");
+    }
+
+    appids.extend(owned_appids);
+    appids.sort_unstable();
+    appids.dedup();
+
+    let appids = appids;
 
     db::upsert_sync_job(
         &state.db,

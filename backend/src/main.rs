@@ -31,7 +31,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    dotenvy::dotenv().ok();
+
     let config = Config::from_env();
+
+    if config.steam_api_key.is_some() {
+        tracing::info!("STEAM_API_KEY configured — owned-games library sync enabled");
+    } else {
+        tracing::warn!(
+            "STEAM_API_KEY not set — wishlist sync works, but library sync is skipped"
+        );
+    }
 
     let db = SqlitePoolOptions::new()
         .max_connections(5)

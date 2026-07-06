@@ -28,6 +28,10 @@ pub fn router() -> Router<AppState> {
             get(wishlists::get_group_wishlists),
         )
         .route(
+            "/api/groups/{group_id}/libraries",
+            get(wishlists::get_group_libraries),
+        )
+        .route(
             "/api/groups/{group_id}/shared-games",
             get(wishlists::get_shared_games),
         )

@@ -234,6 +234,7 @@ impl SyncJobRow {
             },
             phase: self.phase.as_deref().map(|p| match p {
                 "fetching_wishlist" => SyncPhase::FetchingWishlist,
+                "fetching_owned" => SyncPhase::FetchingOwned,
                 "fetching_games" => SyncPhase::FetchingGames,
                 _ => SyncPhase::FetchingWishlist,
             }),

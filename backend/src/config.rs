@@ -8,6 +8,7 @@ pub struct Config {
     pub price_cache_ttl_hours: i64,
     pub steam_chunk_size: usize,
     pub steam_chunk_delay_ms: u64,
+    pub steam_api_key: Option<String>,
 }
 
 impl Config {
@@ -32,6 +33,7 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(200),
+            steam_api_key: env::var("STEAM_API_KEY").ok().filter(|k| !k.is_empty()),
         }
     }
 }
