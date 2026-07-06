@@ -25,8 +25,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NUXT_API_PROXY: http://backend:8080
-      NUXT_PUBLIC_API_BASE: ''
+      HOST: 0.0.0.0
+      PORT: 3000
+      BACKEND_URL: http://backend:8080
     volumes:
       - ./frontend:/app
       - frontend-node-modules:/app/node_modules

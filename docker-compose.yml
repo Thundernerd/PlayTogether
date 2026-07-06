@@ -1,23 +1,24 @@
 services:
   backend:
-    image: tnrd/playtogether-backend:${TAG:-latest}
-    expose:
-      - "8080"
+    image: tnrd/playtogether-backend:latest
+    ports:
+      - "8080:8080"
     environment:
       DATABASE_URL: sqlite:/data/playtogether.db?mode=rwc
       BIND_ADDR: 0.0.0.0:8080
-      CORS_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000,http://127.0.0.1:3000}
+      CORS_ORIGIN: http://localhost:3000,http://127.0.0.1:3000
     volumes:
       - backend-data:/data
     restart: unless-stopped
 
   frontend:
-    image: tnrd/playtogether-frontend:${TAG:-latest}
+    image: tnrd/playtogether-frontend:latest
     ports:
       - "3000:3000"
     environment:
-      NITRO_HOST: 0.0.0.0
-      NITRO_PORT: 3000
+      HOST: 0.0.0.0
+      PORT: 3000
+      BACKEND_URL: http://backend:8080
     depends_on:
       - backend
     restart: unless-stopped
