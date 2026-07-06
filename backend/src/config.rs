@@ -14,7 +14,7 @@ impl Config {
     pub fn from_env() -> Self {
         Self {
             database_url: env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "sqlite:playwishlist.db?mode=rwc".into()),
+                .unwrap_or_else(|_| "sqlite:playtogether.db?mode=rwc".into()),
             bind_addr: env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".into()),
             cors_origin: env::var("CORS_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into()),
             game_cache_ttl_days: env::var("GAME_CACHE_TTL_DAYS")

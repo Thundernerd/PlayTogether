@@ -1,4 +1,4 @@
-# PlayWishlist
+# PlayTogether
 
 Compare Steam wishlists with friends, mark games you want to play together, and vote on what to play next.
 
@@ -21,12 +21,14 @@ Environment variables (optional):
 
 | Variable | Default |
 |---|---|
-| `DATABASE_URL` | `sqlite:playwishlist.db?mode=rwc` |
+| `DATABASE_URL` | `sqlite:playtogether.db?mode=rwc` |
 | `BIND_ADDR` | `0.0.0.0:8080` |
 | `CORS_ORIGIN` | `http://localhost:3000` |
 | `GAME_CACHE_TTL_DAYS` | `7` |
 | `STEAM_CHUNK_SIZE` | `50` |
 | `STEAM_CHUNK_DELAY_MS` | `200` |
+
+If you have an existing `playwishlist.db` from a previous install, rename it to `playtogether.db` or set `DATABASE_URL=sqlite:playwishlist.db?mode=rwc`.
 
 ### Frontend (port 3000)
 

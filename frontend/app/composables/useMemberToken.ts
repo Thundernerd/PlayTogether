@@ -1,4 +1,4 @@
-const TOKEN_KEY = 'playwishlist_member_token'
+const TOKEN_KEY = 'playtogether_member_token'
 
 export function useMemberToken() {
   const token = useState<string | null>('memberToken', () => null)

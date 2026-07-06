@@ -1,5 +1,5 @@
 [package]
-name = "playwishlist-backend"
+name = "playtogether-backend"
 version = "0.1.0"
 edition = "2021"
 

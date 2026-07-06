@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify Steam media URLs for PlayWishlist game detail API.
+# Verify Steam media URLs for PlayTogether game detail API.
 # Usage: ./scripts/verify-media.sh [API_BASE]
 # Default API_BASE: http://localhost:8080
 
@@ -44,7 +44,7 @@ proxy_body_size() {
   curl -sS -o /dev/null -w "%{size_download}" -H "Range: bytes=0-1023" "$url" 2>/dev/null || echo "0"
 }
 
-echo "PlayWishlist media verification"
+echo "PlayTogether media verification"
 echo "API: $API_BASE"
 echo
 
