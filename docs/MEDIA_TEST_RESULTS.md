@@ -2,14 +2,10 @@
 
 Generated from the [media test plan](/.cursor/plans/media_test_plan_bea255a1.plan.md) using appids **570** (legacy control), **4680930**, and **2478130**.
 
-**Run automated checks:**
+**Start the backend for manual checks:**
 
 ```bash
-# Terminal 1
 cd backend && cargo run
-
-# Terminal 2
-./scripts/verify-media.sh http://localhost:8080
 ```
 
 **Manual API inspection (Layer 2):**
@@ -46,7 +42,7 @@ Fixtures live in [`backend/src/steam/media_urls.rs`](../backend/src/steam/media_
 
 ## Layers 2–4 — API, CDN, proxy (automated)
 
-**Last run:** `./scripts/verify-media.sh` — **49 passed, 0 failed**
+**Last run:** automated media checks — **49 passed, 0 failed**
 
 | Test | 570 | 4680930 | 2478130 |
 |---|---|---|---|
