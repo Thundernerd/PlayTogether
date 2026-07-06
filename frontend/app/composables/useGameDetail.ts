@@ -14,6 +14,7 @@ function patchGameInfoInLists(detail: GameDetail) {
       tags: detail.tags.length ? detail.tags : game.tags,
       is_released: detail.is_released ?? game.is_released,
       price: detail.price ?? game.price,
+      play_modes: detail.play_modes ?? game.play_modes,
     }
   }
 

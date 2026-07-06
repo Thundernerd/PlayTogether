@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { WishlistItemView } from '~/types/api'
+import { matchesPlayTogetherFilter, type PlayTogetherFilter } from '~/utils/playModes'
 
 type WishlistFilter = 'all' | 'selected' | 'unselected'
 type ReleaseFilter = 'all' | 'released' | 'unreleased' | 'unknown'
@@ -13,6 +14,7 @@ const { open: openGameDetail } = useGameDetail()
 const wishlistSearch = ref('')
 const wishlistFilter = ref<WishlistFilter>('all')
 const releaseFilter = ref<ReleaseFilter>('all')
+const playTogetherFilter = ref<PlayTogetherFilter>('all')
 const wishlistSort = ref<WishlistSort>('date_desc')
 
 const filteredWishlistItems = computed(() => {
@@ -27,6 +29,10 @@ const filteredWishlistItems = computed(() => {
     if (releaseFilter.value === 'released' && isReleased !== true) return false
     if (releaseFilter.value === 'unreleased' && isReleased !== false) return false
     if (releaseFilter.value === 'unknown' && isReleased != null) return false
+
+    if (!matchesPlayTogetherFilter(item.game?.play_modes, playTogetherFilter.value)) {
+      return false
+    }
 
     if (!query) return true
 
@@ -101,6 +107,12 @@ onUnmounted(stopPolling)
             <option value="unreleased">Unreleased</option>
             <option value="unknown">Release unknown</option>
           </select>
+          <select v-model="playTogetherFilter" class="input select">
+            <option value="all">Any play mode</option>
+            <option value="online_coop">Online co-op</option>
+            <option value="multiplayer_coop">Multiplayer / co-op</option>
+            <option value="unknown">Play mode unknown</option>
+          </select>
           <select v-model="wishlistSort" class="input select">
             <option value="date_desc">Date added (newest)</option>
             <option value="date_asc">Date added (oldest)</option>
@@ -150,7 +162,7 @@ onUnmounted(stopPolling)
 
 .wishlist-toolbar {
   display: grid;
-  grid-template-columns: 1fr repeat(3, auto);
+  grid-template-columns: 1fr repeat(4, auto);
   gap: 0.5rem;
   margin-top: 1rem;
 }

@@ -31,6 +31,13 @@ export interface MemberPublic {
   sync_status: SyncStatus
 }
 
+export interface GamePlayModes {
+  online_coop: boolean
+  coop: boolean
+  multiplayer: boolean
+  remote_play_together: boolean
+}
+
 export interface GamePrice {
   initial_cents?: number | null
   final_cents?: number | null
@@ -48,6 +55,7 @@ export interface GameInfo {
   tags: string[]
   is_released?: boolean | null
   price?: GamePrice | null
+  play_modes?: GamePlayModes | null
 }
 
 export interface GameTrailer {
@@ -67,6 +75,7 @@ export interface GameDetail {
   tags: string[]
   is_released?: boolean | null
   price?: GamePrice | null
+  play_modes?: GamePlayModes | null
   screenshots: string[]
   trailers: GameTrailer[]
   store_url: string
