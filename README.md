@@ -23,7 +23,6 @@ Environment variables (optional):
 |---|---|
 | `DATABASE_URL` | `sqlite:playtogether.db?mode=rwc` |
 | `BIND_ADDR` | `0.0.0.0:8080` |
-| `CORS_ORIGIN` | `http://localhost:3000` |
 | `GAME_CACHE_TTL_DAYS` | `7` |
 | `PRICE_CACHE_TTL_HOURS` | `24` |
 | `STEAM_CHUNK_SIZE` | `50` |
@@ -39,7 +38,7 @@ npm install
 npm run dev
 ```
 
-Set `NUXT_PUBLIC_API_BASE=http://localhost:8080` if the API runs elsewhere.
+Set `BACKEND_URL=http://localhost:8080` if the API runs elsewhere.
 
 ## How it works
 

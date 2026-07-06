@@ -11,10 +11,8 @@ mod steam;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::http::{HeaderName, HeaderValue, Method};
 use sqlx::sqlite::SqlitePoolOptions;
 use tokio::sync::RwLock;
-use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -57,31 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     TagCache::warm(&state).await?;
     GameCache::backfill_header_urls(&state.db).await?;
 
-    let cors_origins: Vec<HeaderValue> = config
-        .cors_origin
-        .split(',')
-        .map(str::trim)
-        .filter(|origin| !origin.is_empty())
-        .map(str::parse)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::list(cors_origins))
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::PATCH,
-            Method::DELETE,
-            Method::OPTIONS,
-        ])
-        .allow_headers([
-            axum::http::header::CONTENT_TYPE,
-            HeaderName::from_static("x-member-token"),
-        ]);
-
     let app = routes::router()
-        .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
