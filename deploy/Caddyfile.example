@@ -1,6 +1,0 @@
-# Reverse proxy example: forward all traffic to the frontend container.
-# The frontend proxies /api/* to the backend internally.
-
-play.example.com {
-    reverse_proxy localhost:3000
-}

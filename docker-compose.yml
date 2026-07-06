@@ -1,10 +1,3 @@
-# Production compose for deployment behind a reverse proxy.
-#
-# Point your reverse proxy at the frontend port (default 3000). The frontend
-# proxies /api/* to the backend internally — do not expose the backend publicly.
-#
-# Set PUBLIC_ORIGIN to the URL users access the app from, e.g. https://play.example.com
-
 services:
   backend:
     image: tnrd/playtogether-backend:${TAG:-latest}
@@ -21,7 +14,7 @@ services:
   frontend:
     image: tnrd/playtogether-frontend:${TAG:-latest}
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "3000:3000"
     environment:
       NITRO_HOST: 0.0.0.0
       NITRO_PORT: 3000
