@@ -91,6 +91,16 @@ pub struct SyncStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct GamePrice {
+    pub initial_cents: Option<i32>,
+    pub final_cents: Option<i32>,
+    pub discount_percent: Option<i32>,
+    pub formatted_initial: Option<String>,
+    pub formatted_final: Option<String>,
+    pub discount_end_date: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct GameInfo {
     pub appid: u32,
     pub name: String,
@@ -98,6 +108,7 @@ pub struct GameInfo {
     pub header_image_url: String,
     pub tags: Vec<String>,
     pub is_released: Option<bool>,
+    pub price: Option<GamePrice>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,6 +129,7 @@ pub struct GameDetail {
     pub header_image_url: String,
     pub tags: Vec<String>,
     pub is_released: Option<bool>,
+    pub price: Option<GamePrice>,
     pub screenshots: Vec<String>,
     pub trailers: Vec<GameTrailer>,
     pub store_url: String,

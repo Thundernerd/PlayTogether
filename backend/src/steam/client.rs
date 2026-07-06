@@ -169,7 +169,8 @@ fn store_list_data_request() -> serde_json::Value {
         "include_assets": true,
         "include_tag_count": 20,
         "include_reviews": true,
-        "include_release": true
+        "include_release": true,
+        "include_all_purchase_options": true
     })
 }
 
@@ -182,7 +183,8 @@ fn store_detail_data_request() -> serde_json::Value {
         "include_release": true,
         "include_screenshots": true,
         "include_trailers": true,
-        "include_full_description": true
+        "include_full_description": true,
+        "include_all_purchase_options": true
     })
 }
 
@@ -198,6 +200,26 @@ pub struct StoreItem {
     pub screenshots: Option<StoreScreenshots>,
     pub trailers: Option<StoreTrailers>,
     pub full_description_bbcode: Option<String>,
+    pub best_purchase_option: Option<PurchaseOption>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct PurchaseOption {
+    pub packageid: Option<u32>,
+    pub purchase_option_name: Option<String>,
+    pub final_price_in_cents: Option<String>,
+    pub original_price_in_cents: Option<String>,
+    pub formatted_final_price: Option<String>,
+    pub formatted_original_price: Option<String>,
+    pub discount_pct: Option<i32>,
+    pub active_discounts: Option<Vec<ActiveDiscount>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ActiveDiscount {
+    pub discount_amount: Option<String>,
+    pub discount_description: Option<String>,
+    pub discount_end_date: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

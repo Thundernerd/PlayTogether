@@ -4,12 +4,13 @@ use sqlx::SqlitePool;
 use tracing::info;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{GameDetail, GameInfo, GameTrailer};
+use crate::models::{GameDetail, GameInfo, GamePrice, GameTrailer};
 use crate::state::AppState;
 use crate::steam::client::{
     AppDetailsData, SteamClient, StoreItem, derive_is_released, derive_is_released_from_app_details,
     store_item_has_details,
 };
+use crate::steam::pricing::{price_from_store_item, store_item_has_pricing};
 use crate::steam::media_urls::{
     collect_trailers, header_image_url, header_image_url_from_app_details, header_image_url_from_item,
     is_allowed_video_cdn_url, normalize_header_image_url, screenshot_urls_from_item, trailer_entries,
@@ -43,6 +44,44 @@ impl GameCache {
 
         let rows = q.fetch_all(db).await?;
         Ok(rows.into_iter().map(|id| id as u32).collect())
+    }
+
+    pub async fn get_price_stale_appids(
+        db: &SqlitePool,
+        appids: &[u32],
+        ttl_hours: i64,
+    ) -> AppResult<HashSet<u32>> {
+        if appids.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        let cutoff = (Utc::now() - Duration::hours(ttl_hours)).to_rfc3339();
+        let placeholders: Vec<String> = appids.iter().map(|_| "?".to_string()).collect();
+        let query = format!(
+            "SELECT appid, raw_json, fetched_at FROM steam_games WHERE appid IN ({})",
+            placeholders.join(", ")
+        );
+
+        let mut q = sqlx::query_as::<_, PriceRow>(&query);
+        for appid in appids {
+            q = q.bind(*appid as i64);
+        }
+
+        let rows = q.fetch_all(db).await?;
+        let mut stale = HashSet::new();
+
+        for row in rows {
+            let appid = row.appid as u32;
+            let missing_pricing = match serde_json::from_str::<StoreItem>(&row.raw_json) {
+                Ok(item) => !store_item_has_pricing(&item),
+                Err(_) => true,
+            };
+            if row.fetched_at <= cutoff || missing_pricing {
+                stale.insert(appid);
+            }
+        }
+
+        Ok(stale)
     }
 
     pub async fn load_game(db: &SqlitePool, appid: u32) -> AppResult<Option<GameInfo>> {
@@ -176,10 +215,16 @@ impl GameCache {
 
         let cached =
             Self::get_cached_appids(&state.db, appids, state.config.game_cache_ttl_days).await?;
+        let price_stale = Self::get_price_stale_appids(
+            &state.db,
+            appids,
+            state.config.price_cache_ttl_hours,
+        )
+        .await?;
         let needs_fetch: Vec<u32> = appids
             .iter()
             .copied()
-            .filter(|id| !cached.contains(id))
+            .filter(|id| !cached.contains(id) || price_stale.contains(id))
             .collect();
 
         let total = needs_fetch.len() as i64;
@@ -411,6 +456,22 @@ struct GameRow {
     is_released: Option<i64>,
 }
 
+struct PriceRow {
+    appid: i64,
+    raw_json: String,
+    fetched_at: String,
+}
+
+impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for PriceRow {
+    fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        Ok(Self {
+            appid: row.try_get("appid")?,
+            raw_json: row.try_get("raw_json")?,
+            fetched_at: row.try_get("fetched_at")?,
+        })
+    }
+}
+
 impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for GameRow {
     fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
         Ok(Self {
@@ -449,6 +510,8 @@ impl GameRow {
             })
             .or_else(|| self.is_released.map(|value| value != 0));
 
+        let price = price_from_raw_json(&self.raw_json);
+
         GameInfo {
             appid: self.appid as u32,
             name: self.name,
@@ -456,6 +519,7 @@ impl GameRow {
             header_image_url,
             tags,
             is_released,
+            price,
         }
     }
 
@@ -513,11 +577,18 @@ impl GameRow {
             header_image_url: base.header_image_url,
             tags,
             is_released: base.is_released,
+            price: base.price,
             screenshots,
             trailers,
             store_url: format!("https://store.steampowered.com/app/{appid}"),
         }
     }
+}
+
+fn price_from_raw_json(raw_json: &str) -> Option<GamePrice> {
+    serde_json::from_str::<StoreItem>(raw_json)
+        .ok()
+        .and_then(|item| price_from_store_item(&item))
 }
 
 pub async fn load_games_map(

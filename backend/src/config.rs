@@ -6,6 +6,7 @@ pub struct Config {
     pub bind_addr: String,
     pub cors_origin: String,
     pub game_cache_ttl_days: i64,
+    pub price_cache_ttl_hours: i64,
     pub steam_chunk_size: usize,
     pub steam_chunk_delay_ms: u64,
 }
@@ -21,6 +22,10 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(7),
+            price_cache_ttl_hours: env::var("PRICE_CACHE_TTL_HOURS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(24),
             steam_chunk_size: env::var("STEAM_CHUNK_SIZE")
                 .ok()
                 .and_then(|v| v.parse().ok())

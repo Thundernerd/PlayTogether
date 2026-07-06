@@ -1,6 +1,7 @@
 mod client;
 mod game_cache;
 mod media_urls;
+mod pricing;
 mod tags;
 
 pub use client::SteamClient;
