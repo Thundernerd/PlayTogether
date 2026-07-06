@@ -4,6 +4,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Proxy /api to the backend service on the compose network.
+ENV NUXT_API_PROXY=http://backend:8080
+
 COPY package.json package-lock.json ./
 RUN npm ci
 
@@ -16,8 +19,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     NITRO_HOST=0.0.0.0 \
-    NITRO_PORT=3000 \
-    NUXT_PUBLIC_API_BASE=http://localhost:8080
+    NITRO_PORT=3000
 
 COPY --from=builder /app/.output ./.output
 

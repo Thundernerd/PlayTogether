@@ -1,12 +1,19 @@
+# Production compose for deployment behind a reverse proxy.
+#
+# Point your reverse proxy at the frontend port (default 3000). The frontend
+# proxies /api/* to the backend internally — do not expose the backend publicly.
+#
+# Set PUBLIC_ORIGIN to the URL users access the app from, e.g. https://play.example.com
+
 services:
   backend:
     image: tnrd/playtogether-backend:${TAG:-latest}
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     environment:
       DATABASE_URL: sqlite:/data/playtogether.db?mode=rwc
       BIND_ADDR: 0.0.0.0:8080
-      CORS_ORIGIN: http://localhost:3000,http://127.0.0.1:3000
+      CORS_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000,http://127.0.0.1:3000}
     volumes:
       - backend-data:/data
     restart: unless-stopped
@@ -14,9 +21,8 @@ services:
   frontend:
     image: tnrd/playtogether-frontend:${TAG:-latest}
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
-      NUXT_PUBLIC_API_BASE: http://localhost:8080
       NITRO_HOST: 0.0.0.0
       NITRO_PORT: 3000
     depends_on:
