@@ -61,6 +61,7 @@ Set `BACKEND_URL=http://localhost:8080` if the API runs elsewhere.
 - `POST /api/groups` — create group
 - `POST /api/groups/by-invite/:code/join` — join group
 - `PATCH /api/members/me` — set Steam ID (triggers sync)
+- `DELETE /api/members/me` — leave group (removes your picks, votes, and synced games)
 - `GET /api/members/me/sync-status` — background sync progress
 - `GET /api/groups/:id/wishlists` — all member wishlists
 - `GET /api/groups/:id/libraries` — all member owned-game libraries

@@ -13,6 +13,7 @@ defineProps<{
 
 const emit = defineEmits<{
   copyInvite: []
+  leaveGroup: []
   deleteGroup: []
 }>()
 </script>
@@ -33,15 +34,24 @@ const emit = defineEmits<{
         :shared-count="sharedCount"
       />
     </div>
-    <button
-      v-if="isMember"
-      class="btn btn-danger"
-      type="button"
-      :disabled="actionLoading"
-      @click="emit('deleteGroup')"
-    >
-      Delete group
-    </button>
+    <div v-if="isMember" class="header-actions">
+      <button
+        class="btn"
+        type="button"
+        :disabled="actionLoading"
+        @click="emit('leaveGroup')"
+      >
+        Leave group
+      </button>
+      <button
+        class="btn btn-danger"
+        type="button"
+        :disabled="actionLoading"
+        @click="emit('deleteGroup')"
+      >
+        Delete group
+      </button>
+    </div>
   </header>
 </template>
 
@@ -80,6 +90,13 @@ const emit = defineEmits<{
   border-color: rgba(248, 113, 113, 0.5);
   color: #fca5a5;
   white-space: nowrap;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
 }
 
 .btn-danger:hover:not(:disabled) {

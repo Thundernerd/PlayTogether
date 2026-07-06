@@ -14,6 +14,7 @@ const {
   groupBasePath,
   ensureLoaded,
   joinGroup,
+  leaveGroup,
   deleteGroup,
   copyInvite,
   onSyncUpdate,
@@ -75,6 +76,7 @@ onUnmounted(() => {
       :library-count="libraryCount"
       :shared-count="sharedCount"
       @copy-invite="copyInvite"
+      @leave-group="leaveGroup"
       @delete-group="deleteGroup"
     />
 

@@ -169,6 +169,13 @@ pub async fn delete_group(
     .await?;
 
     sqlx::query(
+        "DELETE FROM owned_games WHERE member_id IN (SELECT id FROM members WHERE group_id = ?)",
+    )
+    .bind(&group_id_str)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
         "DELETE FROM member_sync_jobs WHERE member_id IN (SELECT id FROM members WHERE group_id = ?)",
     )
     .bind(&group_id_str)

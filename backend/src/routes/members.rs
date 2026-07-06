@@ -113,3 +113,77 @@ pub async fn set_selection(
 
     Ok(Json(serde_json::json!({ "appid": appid, "wants_to_play": body.wants_to_play })))
 }
+
+pub async fn leave_group(
+    State(state): State<AppState>,
+    auth: AuthMember,
+) -> AppResult<Json<serde_json::Value>> {
+    sync_member::cancel_member_sync(&state, auth.id).await;
+
+    let member_id = auth.id.to_string();
+    let group_id = auth.group_id.to_string();
+
+    let member_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM members WHERE group_id = ?",
+    )
+    .bind(&group_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let mut tx = state.db.begin().await?;
+
+    delete_member_data(&mut tx, &member_id).await?;
+
+    sqlx::query("DELETE FROM members WHERE id = ?")
+        .bind(&member_id)
+        .execute(&mut *tx)
+        .await?;
+
+    if member_count == 1 {
+        let deleted = sqlx::query("DELETE FROM play_groups WHERE id = ?")
+            .bind(&group_id)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+
+        if deleted == 0 {
+            return Err(AppError::NotFound);
+        }
+    }
+
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({ "left": true })))
+}
+
+async fn delete_member_data(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    member_id: &str,
+) -> AppResult<()> {
+    sqlx::query("DELETE FROM group_game_votes WHERE member_id = ?")
+        .bind(member_id)
+        .execute(&mut **tx)
+        .await?;
+
+    sqlx::query("DELETE FROM member_selections WHERE member_id = ?")
+        .bind(member_id)
+        .execute(&mut **tx)
+        .await?;
+
+    sqlx::query("DELETE FROM wishlist_items WHERE member_id = ?")
+        .bind(member_id)
+        .execute(&mut **tx)
+        .await?;
+
+    sqlx::query("DELETE FROM owned_games WHERE member_id = ?")
+        .bind(member_id)
+        .execute(&mut **tx)
+        .await?;
+
+    sqlx::query("DELETE FROM member_sync_jobs WHERE member_id = ?")
+        .bind(member_id)
+        .execute(&mut **tx)
+        .await?;
+
+    Ok(())
+}

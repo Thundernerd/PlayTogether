@@ -128,6 +128,35 @@ export function useGroup() {
     }
   }
 
+  async function leaveGroup() {
+    if (!me.value || !groupDetail.value) return
+    const others = groupDetail.value.members.length - 1
+    const message =
+      others > 0
+        ? `Leave "${groupDetail.value.group.name}"? Your play-together picks and votes will be removed.`
+        : `Leave "${groupDetail.value.group.name}"? You are the last member, so the group will be deleted.`
+    if (!confirm(message)) {
+      return
+    }
+
+    actionLoading.value = true
+    error.value = null
+    try {
+      await api('/api/members/me', { method: 'DELETE' })
+      clearToken()
+      groupDetail.value = null
+      me.value = null
+      wishlists.value = []
+      libraries.value = []
+      sharedGames.value = []
+      await router.push('/')
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : 'Failed to leave group'
+    } finally {
+      actionLoading.value = false
+    }
+  }
+
   async function deleteGroup() {
     if (!me.value || !groupDetail.value) return
     if (!confirm(`Delete "${groupDetail.value.group.name}"? This cannot be undone.`)) {
@@ -243,6 +272,7 @@ export function useGroup() {
     ensureLoaded,
     refreshMemberData,
     joinGroup,
+    leaveGroup,
     deleteGroup,
     saveSteamId,
     refreshWishlistSync,

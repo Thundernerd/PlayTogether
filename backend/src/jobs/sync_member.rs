@@ -43,6 +43,10 @@ pub async fn cancel_group_jobs(state: &AppState, group_id: Uuid) -> AppResult<Ve
     Ok(member_ids)
 }
 
+pub async fn cancel_member_sync(state: &AppState, member_id: Uuid) {
+    state.sync_jobs.cancel(member_id).await;
+}
+
 async fn run_sync(state: &AppState, member_id: Uuid, steam_id: u64) -> AppResult<()> {
     ensure_member_active(state, member_id).await?;
 
