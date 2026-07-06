@@ -2,6 +2,7 @@
 const props = defineProps<{
   basePath: string
   wishlistCount?: number
+  libraryCount?: number
   sharedCount?: number
 }>()
 
@@ -10,6 +11,7 @@ const route = useRoute()
 const links = computed(() => [
   { to: props.basePath, label: 'Overview', exact: true },
   { to: `${props.basePath}/wishlist`, label: 'My wishlist', count: props.wishlistCount },
+  { to: `${props.basePath}/library`, label: 'My library', count: props.libraryCount },
   { to: `${props.basePath}/play-together`, label: 'Play together', count: props.sharedCount },
 ])
 

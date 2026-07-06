@@ -9,6 +9,7 @@ const props = defineProps<{
   showCheckbox?: boolean
   disabled?: boolean
   loading?: boolean
+  subtitle?: string
 }>()
 
 const emit = defineEmits<{
@@ -95,6 +96,7 @@ const showImagePlaceholder = computed(
     />
     <div class="body">
       <h3 class="title">{{ title }}</h3>
+      <p v-if="subtitle" class="subtitle">{{ subtitle }}</p>
       <GameDiscountBadge :price="game?.price" />
       <p class="desc" :class="{ muted: loading || !game?.short_description }">{{ description }}</p>
       <div v-if="game?.tags?.length" class="tags">
@@ -167,6 +169,12 @@ const showImagePlaceholder = computed(
 .title {
   margin: 0;
   font-size: 1rem;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #94a3b8;
 }
 
 .desc {

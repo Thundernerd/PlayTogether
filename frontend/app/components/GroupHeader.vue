@@ -7,6 +7,7 @@ defineProps<{
   actionLoading?: boolean
   basePath: string
   wishlistCount?: number
+  libraryCount?: number
   sharedCount?: number
 }>()
 
@@ -28,6 +29,7 @@ const emit = defineEmits<{
         v-if="isMember"
         :base-path="basePath"
         :wishlist-count="wishlistCount"
+        :library-count="libraryCount"
         :shared-count="sharedCount"
       />
     </div>

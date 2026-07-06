@@ -1,5 +1,5 @@
 export type SyncJobStatus = 'idle' | 'running' | 'complete' | 'error'
-export type SyncPhase = 'fetching_wishlist' | 'fetching_games'
+export type SyncPhase = 'fetching_wishlist' | 'fetching_owned' | 'fetching_games'
 
 export interface SyncStatus {
   status: SyncJobStatus
@@ -92,6 +92,19 @@ export interface WishlistItemView {
 export interface MemberWishlist {
   member: MemberPublic
   items: WishlistItemView[]
+}
+
+export interface OwnedGameItemView {
+  appid: number
+  playtime_forever: number
+  rtime_last_played?: number | null
+  game?: GameInfo | null
+  wants_to_play: boolean
+}
+
+export interface MemberLibrary {
+  member: MemberPublic
+  items: OwnedGameItemView[]
 }
 
 export interface MemberSelectionInfo {

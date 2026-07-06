@@ -3,6 +3,7 @@ const group = useGroup()
 const {
   me,
   myWishlist,
+  myLibrary,
   sharedGames,
   syncComplete,
   anyMemberSyncing,
@@ -36,7 +37,7 @@ watch(
     <section class="card">
       <h2 class="section-title">Steam setup</h2>
       <p class="section-subtitle">
-        Your Steam profile and wishlist must be public. Enter your Steam ID64 to sync.
+        Your Steam profile, wishlist, and game details must be public. Enter your Steam ID64 to sync.
       </p>
 
       <div class="steam-form">
@@ -49,7 +50,7 @@ watch(
           Save & sync
         </button>
         <button class="btn" :disabled="actionLoading || !me?.member.steam_id" @click="refreshWishlistSync">
-          Refresh wishlist
+          Refresh Steam data
         </button>
       </div>
 
@@ -66,13 +67,18 @@ watch(
           <span>{{ myWishlist?.items.length ?? 0 }} games</span>
           <span class="hint">Browse, filter, and mark games to play together</span>
         </NuxtLink>
+        <NuxtLink :to="`${groupBasePath}/library`" class="quick-link card">
+          <strong>My library</strong>
+          <span>{{ myLibrary?.items.length ?? 0 }} games</span>
+          <span class="hint">Browse owned games and mark titles to play together</span>
+        </NuxtLink>
         <NuxtLink :to="`${groupBasePath}/play-together`" class="quick-link card">
           <strong>Play together</strong>
           <span>{{ sharedGames.length }} games</span>
           <span class="hint">Vote and rate the group's shared picks</span>
         </NuxtLink>
       </div>
-      <p v-if="!me?.member.steam_id" class="muted">Add your Steam ID above to sync your wishlist.</p>
+      <p v-if="!me?.member.steam_id" class="muted">Add your Steam ID above to sync your wishlist and library.</p>
       <p v-else-if="!syncComplete && anyMemberSyncing" class="muted">Sync in progress…</p>
     </section>
   </div>

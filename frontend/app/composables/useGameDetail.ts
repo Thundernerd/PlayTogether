@@ -1,7 +1,8 @@
-import type { GameDetail, GameInfo, MemberWishlist, SharedGame } from '~/types/api'
+import type { GameDetail, GameInfo, MemberLibrary, MemberWishlist, SharedGame } from '~/types/api'
 
 function patchGameInfoInLists(detail: GameDetail) {
   const wishlists = useState<MemberWishlist[]>('groupWishlists')
+  const libraries = useState<MemberLibrary[]>('groupLibraries')
   const sharedGames = useState<SharedGame[]>('groupSharedGames')
 
   const patch = (game: GameInfo) => {
@@ -21,6 +22,13 @@ function patchGameInfoInLists(detail: GameDetail) {
   wishlists.value = wishlists.value.map((wishlist) => ({
     ...wishlist,
     items: wishlist.items.map((item) =>
+      item.game ? { ...item, game: patch(item.game) } : item,
+    ),
+  }))
+
+  libraries.value = libraries.value.map((library) => ({
+    ...library,
+    items: library.items.map((item) =>
       item.game ? { ...item, game: patch(item.game) } : item,
     ),
   }))

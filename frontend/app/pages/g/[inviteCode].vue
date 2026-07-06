@@ -4,6 +4,7 @@ const {
   groupDetail,
   me,
   myWishlist,
+  myLibrary,
   sharedGames,
   isMember,
   anyMemberSyncing,
@@ -22,6 +23,7 @@ const joinDisplayName = ref('')
 const { startPolling, stopPolling } = useSyncStatus(onSyncUpdate)
 
 const wishlistCount = computed(() => myWishlist.value?.items.length ?? 0)
+const libraryCount = computed(() => myLibrary.value?.items.length ?? 0)
 const sharedCount = computed(() => sharedGames.value.length)
 
 let groupPollTimer: ReturnType<typeof setInterval> | null = null
@@ -70,6 +72,7 @@ onUnmounted(() => {
       :action-loading="actionLoading"
       :base-path="groupBasePath"
       :wishlist-count="wishlistCount"
+      :library-count="libraryCount"
       :shared-count="sharedCount"
       @copy-invite="copyInvite"
       @delete-group="deleteGroup"

@@ -1,6 +1,7 @@
 import type {
   GroupDetailResponse,
   MeResponse,
+  MemberLibrary,
   MemberWishlist,
   SharedGame,
   SyncStatus,
@@ -17,6 +18,7 @@ export function useGroup() {
   const groupDetail = useState<GroupDetailResponse | null>('groupDetail', () => null)
   const me = useState<MeResponse | null>('groupMe', () => null)
   const wishlists = useState<MemberWishlist[]>('groupWishlists', () => [])
+  const libraries = useState<MemberLibrary[]>('groupLibraries', () => [])
   const sharedGames = useState<SharedGame[]>('groupSharedGames', () => [])
 
   const loading = ref(false)
@@ -29,6 +31,10 @@ export function useGroup() {
 
   const myWishlist = computed(() =>
     wishlists.value.find((w) => w.member.id === me.value?.member.id),
+  )
+
+  const myLibrary = computed(() =>
+    libraries.value.find((l) => l.member.id === me.value?.member.id),
   )
 
   const syncComplete = computed(
@@ -62,16 +68,21 @@ export function useGroup() {
     wishlists.value = await api<MemberWishlist[]>(`/api/groups/${me.value.group.id}/wishlists`)
   }
 
+  async function loadLibraries() {
+    if (!me.value) return
+    libraries.value = await api<MemberLibrary[]>(`/api/groups/${me.value.group.id}/libraries`)
+  }
+
   async function loadSharedGames() {
     if (!me.value) return
     sharedGames.value = await api<SharedGame[]>(`/api/groups/${me.value.group.id}/shared-games`)
   }
 
   async function refreshMemberData() {
-    await Promise.all([loadGroup(), loadWishlists(), loadSharedGames()])
+    await Promise.all([loadGroup(), loadWishlists(), loadLibraries(), loadSharedGames()])
   }
 
-  async function ensureLoaded(options: { wishlists?: boolean; shared?: boolean } = {}) {
+  async function ensureLoaded(options: { wishlists?: boolean; libraries?: boolean; shared?: boolean } = {}) {
     syncFromStorage()
     loading.value = true
     error.value = null
@@ -85,6 +96,9 @@ export function useGroup() {
       if (isMember.value) {
         if (options.wishlists ?? true) {
           await loadWishlists()
+        }
+        if (options.libraries ?? true) {
+          await loadLibraries()
         }
         if (options.shared ?? true) {
           await loadSharedGames()
@@ -128,6 +142,7 @@ export function useGroup() {
       groupDetail.value = null
       me.value = null
       wishlists.value = []
+      libraries.value = []
       sharedGames.value = []
       await router.push('/')
     } catch (e: unknown) {
@@ -215,8 +230,10 @@ export function useGroup() {
     groupDetail,
     me,
     wishlists,
+    libraries,
     sharedGames,
     myWishlist,
+    myLibrary,
     isMember,
     syncComplete,
     anyMemberSyncing,
