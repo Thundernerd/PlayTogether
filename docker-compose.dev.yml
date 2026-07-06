@@ -1,0 +1,41 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      target: builder
+    command: cargo run
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: sqlite:/data/playtogether.db?mode=rwc
+      BIND_ADDR: 0.0.0.0:8080
+      CORS_ORIGIN: http://localhost:3000
+      RUST_LOG: playtogether_backend=debug,tower_http=debug
+    volumes:
+      - ./backend:/app
+      - backend-cargo-registry:/usr/local/cargo/registry
+      - backend-cargo-git:/usr/local/cargo/git
+      - backend-target:/app/target
+      - backend-data:/data
+    working_dir: /app
+
+  frontend:
+    image: node:20-alpine
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+    ports:
+      - "3000:3000"
+    environment:
+      NUXT_PUBLIC_API_BASE: http://localhost:8080
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    working_dir: /app
+    depends_on:
+      - backend
+
+volumes:
+  backend-data:
+  backend-cargo-registry:
+  backend-cargo-git:
+  backend-target:
+  frontend-node-modules:
