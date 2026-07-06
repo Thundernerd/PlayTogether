@@ -233,10 +233,10 @@ impl SyncJobRow {
                 _ => SyncJobStatus::Idle,
             },
             phase: self.phase.as_deref().map(|p| match p {
-                "fetching_wishlist" => SyncPhase::FetchingWishlist,
                 "fetching_owned" => SyncPhase::FetchingOwned,
+                "fetching_wishlist" => SyncPhase::FetchingWishlist,
                 "fetching_games" => SyncPhase::FetchingGames,
-                _ => SyncPhase::FetchingWishlist,
+                _ => SyncPhase::FetchingOwned,
             }),
             progress_done: self.progress_done,
             progress_total: self.progress_total,

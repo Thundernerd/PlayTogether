@@ -27,6 +27,8 @@ onMounted(() => ensureLoaded({ wishlists: false, shared: true }))
       </div>
       <p v-else class="muted">
         No games selected yet. Mark games on
+        <NuxtLink :to="`${groupBasePath}/library`">your library</NuxtLink>
+        or
         <NuxtLink :to="`${groupBasePath}/wishlist`">your wishlist</NuxtLink>.
       </p>
     </section>

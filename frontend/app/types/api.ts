@@ -1,5 +1,5 @@
 export type SyncJobStatus = 'idle' | 'running' | 'complete' | 'error'
-export type SyncPhase = 'fetching_wishlist' | 'fetching_owned' | 'fetching_games'
+export type SyncPhase = 'fetching_owned' | 'fetching_wishlist' | 'fetching_games'
 
 export interface SyncStatus {
   status: SyncJobStatus

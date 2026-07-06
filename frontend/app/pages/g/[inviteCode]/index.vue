@@ -62,15 +62,15 @@ watch(
     <section class="card quick-links">
       <h2 class="section-title">Explore</h2>
       <div class="link-grid">
-        <NuxtLink :to="`${groupBasePath}/wishlist`" class="quick-link card">
-          <strong>My wishlist</strong>
-          <span>{{ myWishlist?.items.length ?? 0 }} games</span>
-          <span class="hint">Browse, filter, and mark games to play together</span>
-        </NuxtLink>
         <NuxtLink :to="`${groupBasePath}/library`" class="quick-link card">
           <strong>My library</strong>
           <span>{{ myLibrary?.items.length ?? 0 }} games</span>
           <span class="hint">Browse owned games and mark titles to play together</span>
+        </NuxtLink>
+        <NuxtLink :to="`${groupBasePath}/wishlist`" class="quick-link card">
+          <strong>My wishlist</strong>
+          <span>{{ myWishlist?.items.length ?? 0 }} games</span>
+          <span class="hint">Browse, filter, and mark games to play together</span>
         </NuxtLink>
         <NuxtLink :to="`${groupBasePath}/play-together`" class="quick-link card">
           <strong>Play together</strong>
@@ -78,7 +78,7 @@ watch(
           <span class="hint">Vote and rate the group's shared picks</span>
         </NuxtLink>
       </div>
-      <p v-if="!me?.member.steam_id" class="muted">Add your Steam ID above to sync your wishlist and library.</p>
+      <p v-if="!me?.member.steam_id" class="muted">Add your Steam ID above to sync your library and wishlist.</p>
       <p v-else-if="!syncComplete && anyMemberSyncing" class="muted">Sync in progress…</p>
     </section>
   </div>

@@ -79,7 +79,7 @@ export function useGroup() {
   }
 
   async function refreshMemberData() {
-    await Promise.all([loadGroup(), loadWishlists(), loadLibraries(), loadSharedGames()])
+    await Promise.all([loadGroup(), loadLibraries(), loadWishlists(), loadSharedGames()])
   }
 
   async function ensureLoaded(options: { wishlists?: boolean; libraries?: boolean; shared?: boolean } = {}) {
@@ -94,11 +94,11 @@ export function useGroup() {
         await loadMe()
       }
       if (isMember.value) {
-        if (options.wishlists ?? true) {
-          await loadWishlists()
-        }
         if (options.libraries ?? true) {
           await loadLibraries()
+        }
+        if (options.wishlists ?? true) {
+          await loadWishlists()
         }
         if (options.shared ?? true) {
           await loadSharedGames()

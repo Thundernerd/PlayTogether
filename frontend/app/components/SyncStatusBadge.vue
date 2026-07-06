@@ -8,8 +8,8 @@ const props = defineProps<{
 const label = computed(() => {
   const s = props.status
   if (s.status === 'running') {
-    if (s.phase === 'fetching_wishlist') return 'Fetching wishlist…'
     if (s.phase === 'fetching_owned') return 'Fetching library…'
+    if (s.phase === 'fetching_wishlist') return 'Fetching wishlist…'
     if (s.phase === 'fetching_games') {
       if (s.progress_total > 0) {
         return `Fetching game data ${s.progress_done}/${s.progress_total}`

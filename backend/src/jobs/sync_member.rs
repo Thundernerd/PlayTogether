@@ -46,42 +46,9 @@ pub async fn cancel_group_jobs(state: &AppState, group_id: Uuid) -> AppResult<Ve
 async fn run_sync(state: &AppState, member_id: Uuid, steam_id: u64) -> AppResult<()> {
     ensure_member_active(state, member_id).await?;
 
-    db::upsert_sync_job(
-        &state.db,
-        member_id,
-        "running",
-        Some("fetching_wishlist"),
-        0,
-        0,
-        None,
-    )
-    .await?;
-
     let client = SteamClient::new(state.http.clone());
-    let items = client.fetch_wishlist(steam_id).await?;
+    let mut appids: Vec<u32> = Vec::new();
 
-    ensure_member_active(state, member_id).await?;
-
-    sqlx::query("DELETE FROM wishlist_items WHERE member_id = ?")
-        .bind(member_id.to_string())
-        .execute(&state.db)
-        .await?;
-
-    for item in &items {
-        sqlx::query(
-            "INSERT INTO wishlist_items (member_id, appid, priority, date_added) VALUES (?, ?, ?, ?)",
-        )
-        .bind(member_id.to_string())
-        .bind(item.appid as i64)
-        .bind(item.priority)
-        .bind(item.date_added)
-        .execute(&state.db)
-        .await?;
-    }
-
-    let mut appids: Vec<u32> = items.iter().map(|i| i.appid).collect();
-
-    let mut owned_appids = Vec::new();
     if let Some(api_key) = &state.config.steam_api_key {
         db::upsert_sync_job(
             &state.db,
@@ -113,13 +80,45 @@ async fn run_sync(state: &AppState, member_id: Uuid, steam_id: u64) -> AppResult
             .bind(item.rtime_last_played)
             .execute(&state.db)
             .await?;
-            owned_appids.push(item.appid);
+            appids.push(item.appid);
         }
     } else {
         tracing::warn!(%member_id, "STEAM_API_KEY not set; skipping owned games sync");
     }
 
-    appids.extend(owned_appids);
+    db::upsert_sync_job(
+        &state.db,
+        member_id,
+        "running",
+        Some("fetching_wishlist"),
+        0,
+        0,
+        None,
+    )
+    .await?;
+
+    let items = client.fetch_wishlist(steam_id).await?;
+
+    ensure_member_active(state, member_id).await?;
+
+    sqlx::query("DELETE FROM wishlist_items WHERE member_id = ?")
+        .bind(member_id.to_string())
+        .execute(&state.db)
+        .await?;
+
+    for item in &items {
+        sqlx::query(
+            "INSERT INTO wishlist_items (member_id, appid, priority, date_added) VALUES (?, ?, ?, ?)",
+        )
+        .bind(member_id.to_string())
+        .bind(item.appid as i64)
+        .bind(item.priority)
+        .bind(item.date_added)
+        .execute(&state.db)
+        .await?;
+        appids.push(item.appid);
+    }
+
     appids.sort_unstable();
     appids.dedup();
 
