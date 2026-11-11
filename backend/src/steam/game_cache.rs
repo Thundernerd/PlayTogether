@@ -952,4 +952,22 @@ mod tests {
             Some("Listed")
         );
     }
+
+    #[tokio::test]
+    async fn an_uncached_app_steam_fails_for_stays_uncached_instead_of_becoming_unavailable() {
+        let state = test_state(test_db().await);
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .failing_app_details_for(FAILING);
+
+        fetch_missing(&state, &steam, &[FAILING, LISTED])
+            .await
+            .unwrap();
+
+        assert_eq!(stored_raw_json(&state.db, FAILING).await, None);
+        assert_eq!(
+            stored_name(&state.db, LISTED).await.as_deref(),
+            Some("Listed")
+        );
+    }
 }
