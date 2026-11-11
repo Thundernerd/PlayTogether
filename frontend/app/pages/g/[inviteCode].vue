@@ -13,6 +13,9 @@ const {
   librariesLoading,
   wishlistsLoading,
   sharedLoading,
+  librariesError,
+  wishlistsError,
+  sharedError,
   actionLoading,
   error,
   listError,
@@ -88,6 +91,9 @@ onUnmounted(() => {
       :library-loading="librariesLoading"
       :wishlist-loading="wishlistsLoading"
       :shared-loading="sharedLoading"
+      :library-failed="!!librariesError"
+      :wishlist-failed="!!wishlistsError"
+      :shared-failed="!!sharedError"
       @copy-invite="copyInvite"
       @leave-group="leaveGroup"
       @delete-group="deleteGroup"
