@@ -174,6 +174,8 @@ input[type='checkbox'] {
 
 .brand::before {
   content: '♣ ';
+  /* Empty alt text keeps screen readers from announcing "club" before the name. */
+  content: '♣ ' / '';
   color: var(--accent);
 }
 
