@@ -1,9 +1,8 @@
-import type { GameDetail, GameInfo, MemberLibrary, MemberWishlist, SharedGame } from '~/types/api'
+import type { GameDetail, GameInfo } from '~/types/api'
+import type { MemberLists } from '~/composables/useMemberList'
+import type { Ref } from 'vue'
 
-function patchGameInfoInLists(detail: GameDetail) {
-  const wishlists = useState<MemberWishlist[]>('groupWishlists')
-  const libraries = useState<MemberLibrary[]>('groupLibraries')
-  const sharedGames = useState<SharedGame[]>('groupSharedGames')
+function patchGameInfoInLists(lists: Ref<MemberLists>, detail: GameDetail) {
 
   const patch = (game: GameInfo) => {
     if (game.appid !== detail.appid) return game
@@ -19,27 +18,29 @@ function patchGameInfoInLists(detail: GameDetail) {
     }
   }
 
-  wishlists.value = wishlists.value.map((wishlist) => ({
+  lists.value.wishlists.data = lists.value.wishlists.data.map((wishlist) => ({
     ...wishlist,
     items: wishlist.items.map((item) =>
       item.game ? { ...item, game: patch(item.game) } : item,
     ),
   }))
 
-  libraries.value = libraries.value.map((library) => ({
+  lists.value.libraries.data = lists.value.libraries.data.map((library) => ({
     ...library,
     items: library.items.map((item) =>
       item.game ? { ...item, game: patch(item.game) } : item,
     ),
   }))
 
-  sharedGames.value = sharedGames.value.map((item) =>
+  lists.value.shared.data = lists.value.shared.data.map((item) =>
     item.appid === detail.appid ? { ...item, game: patch(item.game) } : item,
   )
 }
 
 export function useGameDetail() {
   const { api } = useApi()
+  // Read in setup: fetchDetail patches the lists after an await, outside the setup context.
+  const lists = useMemberLists()
   const activeAppid = useState<number | null>('game-detail-appid', () => null)
   const cache = useState<Record<number, GameDetail>>('game-detail-cache-v3', () => ({}))
   const loading = ref(false)
@@ -64,7 +65,7 @@ export function useGameDetail() {
     try {
       const result = await api<GameDetail>(`/api/games/${appid}`)
       cache.value = { ...cache.value, [appid]: result }
-      patchGameInfoInLists(result)
+      patchGameInfoInLists(lists, result)
       return result
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load game details'
