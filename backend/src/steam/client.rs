@@ -120,43 +120,25 @@ impl SteamClient {
         response.json().await.map_err(AppError::from)
     }
 
-    pub async fn fetch_app_details(
-        &self,
-        appids: &[u32],
-    ) -> AppResult<std::collections::HashMap<u32, AppDetailsData>> {
+    /// appdetails rejects a list of appids (400) unless filters=price_overview,
+    /// so this asks for a single app.
+    pub async fn fetch_app_details(&self, appid: u32) -> AppResult<Option<AppDetailsData>> {
         use std::collections::HashMap;
 
-        if appids.is_empty() {
-            return Ok(HashMap::new());
-        }
+        let response = self
+            .http
+            .get(APP_DETAILS_URL)
+            .query(&[("appids", appid.to_string()), ("filters", String::from("basic"))])
+            .send()
+            .await?
+            .error_for_status()
+            .map_err(|e| AppError::Steam(format!("appdetails request failed: {e}")))?;
 
-        // appdetails rejects a list of appids (400) unless filters=price_overview,
-        // so ask for one app per request.
-        let mut results = HashMap::new();
-        for appid in appids {
-            let response = self
-                .http
-                .get(APP_DETAILS_URL)
-                .query(&[("appids", appid.to_string()), ("filters", String::from("basic"))])
-                .send()
-                .await?
-                .error_for_status()
-                .map_err(|e| AppError::Steam(format!("appdetails request failed: {e}")))?;
-
-            let body: HashMap<String, AppDetailsEntry> = response.json().await?;
-            for (key, entry) in body {
-                if !entry.success {
-                    continue;
-                }
-                let Some(data) = entry.data else {
-                    continue;
-                };
-                let appid = key.parse::<u32>().unwrap_or(data.steam_appid);
-                results.insert(appid, data);
-            }
-        }
-
-        Ok(results)
+        let mut body: HashMap<String, AppDetailsEntry> = response.json().await?;
+        Ok(body
+            .remove(&appid.to_string())
+            .filter(|entry| entry.success)
+            .and_then(|entry| entry.data))
     }
 }
 

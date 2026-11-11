@@ -262,16 +262,13 @@ impl GameCache {
         }
 
         let mut after_details = Vec::new();
-        for chunk in after_individual.chunks(10) {
-            let details = client.fetch_app_details(chunk).await?;
-            for appid in chunk {
-                if let Some(detail) = details.get(appid) {
-                    Self::upsert_from_app_details(state, *appid, detail).await?;
-                    done += 1;
-                    on_progress(done, total).await;
-                } else {
-                    after_details.push(*appid);
-                }
+        for appid in after_individual {
+            if let Some(detail) = client.fetch_app_details(appid).await? {
+                Self::upsert_from_app_details(state, appid, &detail).await?;
+                done += 1;
+                on_progress(done, total).await;
+            } else {
+                after_details.push(appid);
             }
             tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
         }
