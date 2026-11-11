@@ -822,6 +822,14 @@ mod tests {
     }
 
     /// An `AppState` over `db` with no delay between Steam calls.
+    /// A test state whose cooldown is measured with the returned clock.
+    async fn test_state_with_clock() -> (AppState, ManualClock) {
+        let mut state = test_state(test_db().await);
+        let clock = ManualClock::new();
+        state.game_refresh = Arc::new(GameRefreshQueue::with_clock(clock.clone()));
+        (state, clock)
+    }
+
     fn test_state(db: SqlitePool) -> AppState {
         AppState {
             db,
@@ -1294,9 +1302,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_stale_app_steam_failed_for_is_queued_again_once_the_cooldown_has_passed() {
-        let mut state = test_state(test_db().await);
-        let clock = ManualClock::new();
-        state.game_refresh = Arc::new(GameRefreshQueue::with_clock(clock.clone()));
+        let (state, clock) = test_state_with_clock().await;
         insert_price_stale_failing_row(&state.db).await;
         let steam = FakeSteam::new().failing_every_call_for(FAILING);
         let _ = GameCache::ensure_cached_from(&state, &steam, &[FAILING])
@@ -1383,16 +1389,20 @@ mod tests {
 
     #[tokio::test]
     async fn an_uncached_app_steam_failed_for_is_fetched_again_once_the_cooldown_has_passed() {
-        let mut state = test_state(test_db().await);
-        let clock = ManualClock::new();
-        state.game_refresh = Arc::new(GameRefreshQueue::with_clock(clock.clone()));
+        let (state, clock) = test_state_with_clock().await;
         let failing = FakeSteam::new().failing_every_call_for(UNCACHED);
         let _ = GameCache::ensure_cached_from(&state, &failing, &[UNCACHED])
             .await
             .unwrap();
 
-        clock.advance(FAILED_FETCH_COOLDOWN);
         let answering = FakeSteam::new().with_store_item(UNCACHED, "Uncached");
+        clock.advance(FAILED_FETCH_COOLDOWN - std::time::Duration::from_secs(1));
+        let _ = GameCache::ensure_cached_from(&state, &answering, &[UNCACHED])
+            .await
+            .unwrap();
+        assert_eq!(stored_raw_json(&state.db, UNCACHED).await, None);
+
+        clock.advance(std::time::Duration::from_secs(1));
         let _ = GameCache::ensure_cached_from(&state, &answering, &[UNCACHED])
             .await
             .unwrap();
