@@ -10,10 +10,11 @@ export type ListStatus = 'items' | 'loading' | 'failed' | 'syncing' | 'empty' | 
 export function listStatus(list: {
   itemCount: number
   /**
-   * Whether a load has returned the list yet (for a member's own list, their entry in it);
-   * once it has, a reload keeps the current status instead of showing 'loading', and a failed
-   * reload keeps it instead of showing 'failed'. Left out, every load shows 'loading' and
-   * every error 'failed'.
+   * Whether a load of the list has succeeded yet: the list-level flag, so the page agrees
+   * with the nav and overview counts even when the member's own entry is missing. Once it
+   * has, a reload keeps the current status instead of showing 'loading', and a failed reload
+   * keeps it instead of showing 'failed'. Left out, every load shows 'loading' and every
+   * error 'failed'.
    */
   loaded?: boolean
   loading: boolean

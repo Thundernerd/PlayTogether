@@ -18,6 +18,7 @@ const {
   retryListLoads,
 } = group
 const {
+  loaded: wishlistsLoaded,
   loading: wishlistsLoading,
   error: wishlistsError,
   refreshFailed: wishlistsRefreshFailed,
@@ -34,7 +35,7 @@ const wishlistSort = ref<WishlistSort>('date_desc')
 const status = computed(() =>
   listStatus({
     itemCount: myWishlist.value?.items.length ?? 0,
-    loaded: !!myWishlist.value,
+    loaded: wishlistsLoaded.value,
     loading: wishlistsLoading.value,
     error: wishlistsError.value,
     sync: {
@@ -115,7 +116,7 @@ onUnmounted(stopPolling)
       </div>
 
       <ListRefreshFailed
-        v-if="wishlistsRefreshFailed && status !== 'failed'"
+        v-if="wishlistsRefreshFailed"
         :retrying="wishlistsLoading"
         @retry="retryListLoads"
       />

@@ -23,6 +23,7 @@ const {
   retryListLoads,
 } = group
 const {
+  loaded: librariesLoaded,
   loading: librariesLoading,
   error: librariesError,
   refreshFailed: librariesRefreshFailed,
@@ -39,7 +40,7 @@ const librarySort = ref<LibrarySort>('playtime_desc')
 const status = computed(() =>
   listStatus({
     itemCount: myLibrary.value?.items.length ?? 0,
-    loaded: !!myLibrary.value,
+    loaded: librariesLoaded.value,
     loading: librariesLoading.value,
     error: librariesError.value,
     sync: {
@@ -133,7 +134,7 @@ onUnmounted(stopPolling)
       </div>
 
       <ListRefreshFailed
-        v-if="librariesRefreshFailed && status !== 'failed'"
+        v-if="librariesRefreshFailed"
         :retrying="librariesLoading"
         @retry="retryListLoads"
       />
