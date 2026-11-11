@@ -141,9 +141,7 @@ onUnmounted(stopPolling)
         <p v-else class="muted">No games match your search or filters.</p>
       </template>
 
-      <p v-else-if="wishlistsLoading" class="muted list-loading">
-        <LoadingSpinner size="md" /> Loading your wishlist…
-      </p>
+      <LoadingMessage v-else-if="wishlistsLoading">Loading your wishlist…</LoadingMessage>
       <p v-else-if="syncComplete" class="muted">Your wishlist is empty.</p>
       <p v-else class="muted">Sync your Steam wishlist from the overview page first.</p>
     </section>
@@ -180,12 +178,6 @@ onUnmounted(stopPolling)
 
 .muted {
   color: var(--muted);
-}
-
-.list-loading {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
 @media (max-width: 720px) {

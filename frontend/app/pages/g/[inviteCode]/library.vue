@@ -161,9 +161,7 @@ onUnmounted(stopPolling)
         <p v-else class="muted">No games match your search or filters.</p>
       </template>
 
-      <p v-else-if="librariesLoading" class="muted list-loading">
-        <LoadingSpinner size="md" /> Loading your library…
-      </p>
+      <LoadingMessage v-else-if="librariesLoading">Loading your library…</LoadingMessage>
       <p v-else-if="librarySyncComplete" class="muted">Your library is empty.</p>
       <p v-else class="muted">Sync your Steam data from the overview page first.</p>
     </section>
@@ -200,12 +198,6 @@ onUnmounted(stopPolling)
 
 .muted {
   color: var(--muted);
-}
-
-.list-loading {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
 @media (max-width: 720px) {
