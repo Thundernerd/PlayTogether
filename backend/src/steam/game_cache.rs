@@ -248,11 +248,11 @@ impl GameCache {
         while let Some(batch) = worker.next_batch() {
             info!(count = batch.len(), "refreshing stale game cache rows in the background");
             match Self::fetch_missing(state, client, &batch, |_, _| async {}).await {
-                Ok(failed) => worker.record_failed(&failed),
+                Ok(failed) => state.game_refresh.record_failed(&failed),
                 Err(error) => {
                     warn!(%error, "background game cache refresh failed; rows stay due for refresh");
                     // Which apps failed is unknown, so hold back the whole batch.
-                    worker.record_failed(&batch);
+                    state.game_refresh.record_failed(&batch);
                 }
             }
         }
@@ -792,7 +792,7 @@ mod tests {
     use crate::config::Config;
     use crate::jobs::registry::SyncJobRegistry;
     use crate::steam::GameRefreshQueue;
-    use crate::steam::game_refresh::{ManualClock, FAILED_REFRESH_COOLDOWN};
+    use crate::steam::game_refresh::{ManualClock, FAILED_FETCH_COOLDOWN};
     use crate::steam::store::fake::FakeSteam;
 
     const PRICE_TTL_HOURS: i64 = 24;
@@ -1304,7 +1304,7 @@ mod tests {
             .unwrap();
         GameCache::refresh_queued(&state, &steam).await;
 
-        clock.advance(FAILED_REFRESH_COOLDOWN);
+        clock.advance(FAILED_FETCH_COOLDOWN);
         let starts_worker = GameCache::ensure_cached_from(&state, &steam, &[FAILING])
             .await
             .unwrap();
@@ -1391,7 +1391,7 @@ mod tests {
             .await
             .unwrap();
 
-        clock.advance(FAILED_REFRESH_COOLDOWN);
+        clock.advance(FAILED_FETCH_COOLDOWN);
         let answering = FakeSteam::new().with_store_item(UNCACHED, "Uncached");
         let _ = GameCache::ensure_cached_from(&state, &answering, &[UNCACHED])
             .await
