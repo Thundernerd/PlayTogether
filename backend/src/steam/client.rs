@@ -130,33 +130,30 @@ impl SteamClient {
             return Ok(HashMap::new());
         }
 
-        let ids = appids
-            .iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-
-        let response = self
-            .http
-            .get(APP_DETAILS_URL)
-            .query(&[("appids", ids), ("filters", String::from("basic"))])
-            .send()
-            .await?
-            .error_for_status()
-            .map_err(|e| AppError::Steam(format!("appdetails request failed: {e}")))?;
-
-        let body: HashMap<String, AppDetailsEntry> = response.json().await?;
+        // appdetails rejects a list of appids (400) unless filters=price_overview,
+        // so ask for one app per request.
         let mut results = HashMap::new();
+        for appid in appids {
+            let response = self
+                .http
+                .get(APP_DETAILS_URL)
+                .query(&[("appids", appid.to_string()), ("filters", String::from("basic"))])
+                .send()
+                .await?
+                .error_for_status()
+                .map_err(|e| AppError::Steam(format!("appdetails request failed: {e}")))?;
 
-        for (key, entry) in body {
-            if !entry.success {
-                continue;
+            let body: HashMap<String, AppDetailsEntry> = response.json().await?;
+            for (key, entry) in body {
+                if !entry.success {
+                    continue;
+                }
+                let Some(data) = entry.data else {
+                    continue;
+                };
+                let appid = key.parse::<u32>().unwrap_or(data.steam_appid);
+                results.insert(appid, data);
             }
-            let Some(data) = entry.data else {
-                continue;
-            };
-            let appid = key.parse::<u32>().unwrap_or(data.steam_appid);
-            results.insert(appid, data);
         }
 
         Ok(results)
