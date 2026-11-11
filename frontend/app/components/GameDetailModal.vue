@@ -13,7 +13,10 @@ const selectedIndex = ref(0)
 const videoRef = ref<HTMLVideoElement | null>(null)
 
 const descriptionHtml = computed(() =>
-  renderGameDescription(detail.value?.full_description || detail.value?.short_description),
+  renderGameDescription(
+    detail.value?.full_description || detail.value?.short_description,
+    detail.value?.appid,
+  ),
 )
 
 const releaseLabel = computed(() => {

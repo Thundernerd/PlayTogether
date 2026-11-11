@@ -76,6 +76,10 @@ pub enum SyncJobStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(
+    clippy::enum_variant_names,
+    reason = "variant names are the snake_case wire values (fetching_*) the frontend reads"
+)]
 pub enum SyncPhase {
     FetchingOwned,
     FetchingWishlist,
