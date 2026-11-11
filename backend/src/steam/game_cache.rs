@@ -251,6 +251,8 @@ impl GameCache {
                 Ok(failed) => worker.record_failed(&failed),
                 Err(error) => {
                     warn!(%error, "background game cache refresh failed; rows stay due for refresh");
+                    // Which apps failed is unknown, so hold back the whole batch.
+                    worker.record_failed(&batch);
                 }
             }
         }
@@ -1326,5 +1328,30 @@ mod tests {
 
         assert!(starts_worker);
         assert_eq!(state.game_refresh.queued(), vec![STALE]);
+    }
+
+    #[tokio::test]
+    async fn a_stale_app_whose_refresh_cannot_be_stored_is_not_queued_again_during_the_cooldown() {
+        let state = test_state(test_db().await);
+        insert_price_stale_row(&state.db, STALE, STALE_RAW_JSON).await;
+        sqlx::query(
+            "CREATE TRIGGER steam_games_read_only BEFORE UPDATE ON steam_games \
+             BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END",
+        )
+        .execute(&state.db)
+        .await
+        .unwrap();
+        let steam = FakeSteam::new().with_store_item(STALE, "New name");
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[STALE])
+            .await
+            .unwrap();
+        GameCache::refresh_queued(&state, &steam).await;
+
+        let starts_worker = GameCache::ensure_cached_from(&state, &steam, &[STALE])
+            .await
+            .unwrap();
+
+        assert!(!starts_worker);
+        assert_eq!(state.game_refresh.queued(), Vec::<u32>::new());
     }
 }
