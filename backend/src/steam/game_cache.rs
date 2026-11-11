@@ -231,39 +231,33 @@ impl GameCache {
         }
 
         let chunk_size = state.config.steam_chunk_size;
-        let delay = state.config.steam_chunk_delay_ms;
-        let mut done = 0i64;
+        let delay = tokio::time::Duration::from_millis(state.config.steam_chunk_delay_ms);
+        let mut progress = WalkProgress::new(total, on_progress);
         let mut still_missing = Vec::new();
-        // Apps Steam failed for keep the row they have, so the next request
-        // fetches them again; they still count towards progress.
-        let mut failed = 0usize;
 
         for chunk in needs_fetch.chunks(chunk_size) {
-            let items = match client.fetch_store_items(chunk).await {
-                Ok(items) => Self::requested_items(chunk, items),
-                Err(error) => {
-                    warn!(?chunk, %error, "Steam GetItems failed for chunk; skipping it");
-                    failed += chunk.len();
-                    done += chunk.len() as i64;
-                    on_progress(done, total).await;
-                    tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
-                    continue;
-                }
-            };
-            let returned: HashSet<u32> = items.iter().map(|i| i.appid).collect();
-            Self::upsert_items(state, &items).await?;
+            match client.fetch_store_items(chunk).await {
+                Ok(items) => {
+                    let items = Self::requested_items(chunk, items);
+                    let returned: HashSet<u32> = items.iter().map(|i| i.appid).collect();
+                    Self::upsert_items(state, &items).await?;
 
-            for appid in chunk {
-                if returned.contains(appid) {
-                    done += 1;
-                    on_progress(done, total).await;
-                } else {
-                    still_missing.push(*appid);
+                    for appid in chunk {
+                        if returned.contains(appid) {
+                            progress.record_fetched(1).await;
+                        } else {
+                            still_missing.push(*appid);
+                        }
+                    }
+                }
+                Err(error) => {
+                    warn!(?chunk, %error, "Steam GetItems failed for chunk; leaving it for the next fetch");
+                    progress.record_failed(chunk.len()).await;
                 }
             }
 
-            if done < total {
-                tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+            if !progress.is_complete() {
+                tokio::time::sleep(delay).await;
             }
         }
 
@@ -276,18 +270,15 @@ impl GameCache {
                         after_individual.push(appid);
                     } else {
                         Self::upsert_items(state, &items).await?;
-                        done += 1;
-                        on_progress(done, total).await;
+                        progress.record_fetched(1).await;
                     }
                 }
                 Err(error) => {
-                    warn!(appid, %error, "Steam GetItems failed for app; keeping the cached row");
-                    failed += 1;
-                    done += 1;
-                    on_progress(done, total).await;
+                    warn!(appid, %error, "Steam GetItems failed for app; leaving it for the next fetch");
+                    progress.record_failed(1).await;
                 }
             }
-            tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+            tokio::time::sleep(delay).await;
         }
 
         let mut after_details = Vec::new();
@@ -295,29 +286,26 @@ impl GameCache {
             match client.fetch_app_details(appid).await {
                 Ok(Some(detail)) => {
                     Self::upsert_from_app_details(state, appid, &detail).await?;
-                    done += 1;
-                    on_progress(done, total).await;
+                    progress.record_fetched(1).await;
                 }
                 Ok(None) => after_details.push(appid),
                 Err(error) => {
-                    warn!(appid, %error, "Steam appdetails failed; keeping the cached row");
-                    failed += 1;
-                    done += 1;
-                    on_progress(done, total).await;
+                    warn!(appid, %error, "Steam appdetails failed; leaving it for the next fetch");
+                    progress.record_failed(1).await;
                 }
             }
-            tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+            tokio::time::sleep(delay).await;
         }
 
         for appid in after_details {
             Self::upsert_unavailable(state, appid).await?;
-            done += 1;
-            on_progress(done, total).await;
+            progress.record_fetched(1).await;
         }
 
         info!(
-            fetched = total - failed as i64,
-            failed, "game cache updated from Steam"
+            fetched = progress.fetched,
+            failed = progress.failed,
+            "game cache updated from Steam"
         );
         Ok(())
     }
@@ -631,6 +619,54 @@ pub async fn load_games_map(
     Ok(map)
 }
 
+/// Progress through `GameCache::fetch_missing`'s walk, reported to its
+/// `on_progress` callback. Apps Steam failed for count as done: they keep the
+/// row they have (or stay uncached), and the next fetch tries them again.
+struct WalkProgress<F> {
+    total: i64,
+    fetched: i64,
+    failed: i64,
+    on_progress: F,
+}
+
+impl<F, Fut> WalkProgress<F>
+where
+    F: FnMut(i64, i64) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    fn new(total: i64, on_progress: F) -> Self {
+        Self {
+            total,
+            fetched: 0,
+            failed: 0,
+            on_progress,
+        }
+    }
+
+    fn done(&self) -> i64 {
+        self.fetched + self.failed
+    }
+
+    fn is_complete(&self) -> bool {
+        self.done() >= self.total
+    }
+
+    async fn record_fetched(&mut self, apps: usize) {
+        self.fetched += apps as i64;
+        self.report().await;
+    }
+
+    async fn record_failed(&mut self, apps: usize) {
+        self.failed += apps as i64;
+        self.report().await;
+    }
+
+    async fn report(&mut self) {
+        let done = self.done();
+        (self.on_progress)(done, self.total).await;
+    }
+}
+
 use sqlx::Row;
 
 #[cfg(test)]
@@ -902,7 +938,7 @@ mod tests {
         let steam = FakeSteam::new()
             .with_store_item(LISTED, "Listed")
             .with_store_item(FAILING, "New name")
-            .failing_for(FAILING);
+            .failing_every_call_for(FAILING);
 
         fetch_missing(&state, &steam, &[FAILING, LISTED])
             .await

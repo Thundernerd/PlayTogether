@@ -63,9 +63,9 @@ pub mod fake {
         store_items: HashMap<u32, StoreItem>,
         app_details: HashMap<u32, AppDetailsData>,
         hidden: HashSet<u32>,
-        failing: HashSet<u32>,
+        failing_every_call: HashSet<u32>,
         failing_app_details: HashSet<u32>,
-        failing_alone: HashSet<u32>,
+        failing_when_alone: HashSet<u32>,
     }
 
     impl FakeSteam {
@@ -98,8 +98,8 @@ pub mod fake {
         }
 
         /// Every call that asks for the app fails, as an HTTP error would.
-        pub fn failing_for(mut self, appid: u32) -> Self {
-            self.failing.insert(appid);
+        pub fn failing_every_call_for(mut self, appid: u32) -> Self {
+            self.failing_every_call.insert(appid);
             self
         }
 
@@ -113,12 +113,15 @@ pub mod fake {
         /// `GetItems` fails when asked for the app on its own, and leaves it out
         /// of the answer when asked for it with other apps.
         pub fn failing_when_asked_alone_for(mut self, appid: u32) -> Self {
-            self.failing_alone.insert(appid);
+            self.failing_when_alone.insert(appid);
             self
         }
 
         fn fail_if_any_failing(&self, appids: &[u32]) -> AppResult<()> {
-            match appids.iter().find(|appid| self.failing.contains(appid)) {
+            match appids
+                .iter()
+                .find(|appid| self.failing_every_call.contains(appid))
+            {
                 Some(appid) => Err(AppError::Steam(format!(
                     "fake Steam failure for app {appid}"
                 ))),
@@ -129,7 +132,7 @@ pub mod fake {
         fn store_items_for(&self, appids: &[u32]) -> AppResult<Vec<StoreItem>> {
             self.fail_if_any_failing(appids)?;
             if let [appid] = appids {
-                if self.failing_alone.contains(appid) {
+                if self.failing_when_alone.contains(appid) {
                     return Err(AppError::Steam(format!(
                         "fake GetItems failure for app {appid}"
                     )));
