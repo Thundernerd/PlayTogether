@@ -5,7 +5,7 @@ Compare Steam wishlists with friends, mark games you want to play together, and 
 ## Prerequisites
 
 - Rust (stable)
-- Node.js 22.18+ (or 24.11+)
+- Node.js 22.18+ (or 24.11+), as declared in `engines.node` in `frontend/package.json`
 - Steam profiles with **public** wishlists and **public game details** (required for sync)
 - A [Steam Web API key](https://steamcommunity.com/dev/apikey) (required for owned-games library sync)
 
@@ -51,6 +51,8 @@ Set `BACKEND_URL=http://localhost:8080` if the API runs elsewhere.
 Type-check the frontend (including `.vue` files) with `npm run typecheck`; `npm run build` does not type-check.
 
 Run the frontend unit tests (Vitest, under `frontend/test/`) with `npm run test`.
+
+`frontend/.nvmrc` is the source of truth for the frontend's Node major (`nvm use` reads it, and so does the "Frontend checks" workflow). To change the major, edit `frontend/.nvmrc`, the `NODE_VERSION` build arg default in `frontend/Dockerfile`, and the `node:<major>-alpine` image tag in `docker-compose.dev.yml` (compose can't read `.nvmrc`). If the minor-version floor changes, update `engines.node` in `frontend/package.json` and the prerequisite above.
 
 ## How it works
 
