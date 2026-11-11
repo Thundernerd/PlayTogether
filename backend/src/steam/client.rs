@@ -103,8 +103,17 @@ impl SteamClient {
             .error_for_status()
             .map_err(|e| AppError::Steam(format!("GetItems request failed: {e}")))?;
 
+        // For delisted or hidden apps Steam answers with an item whose appid is 0
+        // (success 15); keep only items for the appids that were asked for, so
+        // callers see those apps as not returned.
         let body: GetItemsResponse = response.json().await?;
-        Ok(body.response.store_items.unwrap_or_default())
+        Ok(body
+            .response
+            .store_items
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|item| appids.contains(&item.appid))
+            .collect())
     }
 
     pub async fn fetch_tag_list(&self) -> AppResult<TagListResponse> {

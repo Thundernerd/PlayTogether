@@ -79,7 +79,8 @@ impl GameCache {
     }
 
     pub async fn ensure_detail_cached(state: &AppState, appid: u32) -> AppResult<()> {
-        if let Some(row) = Self::load_row(&state.db, appid).await? {
+        let row = Self::load_row(&state.db, appid).await?;
+        if let Some(row) = &row {
             if let Ok(item) = serde_json::from_str::<StoreItem>(&row.raw_json) {
                 if store_item_has_details(&item) {
                     return Ok(());
@@ -90,7 +91,8 @@ impl GameCache {
         let client = SteamClient::new(state.http.clone());
         let items = client.fetch_store_item_details(appid).await?;
         if items.is_empty() {
-            return Err(AppError::NotFound);
+            // Steam no longer lists the app; show what the cache already has.
+            return if row.is_some() { Ok(()) } else { Err(AppError::NotFound) };
         }
 
         Self::upsert_items(state, &items).await?;
@@ -230,7 +232,7 @@ impl GameCache {
         let mut still_missing = Vec::new();
 
         for chunk in needs_fetch.chunks(chunk_size) {
-            let items = requested_items(client.fetch_store_items(chunk).await?, chunk);
+            let items = client.fetch_store_items(chunk).await?;
             let returned: HashSet<u32> = items.iter().map(|i| i.appid).collect();
             Self::upsert_items(state, &items).await?;
 
@@ -250,7 +252,7 @@ impl GameCache {
 
         let mut after_individual = Vec::new();
         for appid in still_missing {
-            let items = requested_items(client.fetch_store_items(&[appid]).await?, &[appid]);
+            let items = client.fetch_store_items(&[appid]).await?;
             if items.is_empty() {
                 after_individual.push(appid);
             } else {
@@ -581,17 +583,6 @@ pub async fn load_games_map(
         }
     }
     Ok(map)
-}
-
-/// Steam answers for delisted or hidden apps with an item whose `appid` is 0
-/// (`success: 15`); keep only items for the appids we asked for, so those apps
-/// fall through to the app-details / unavailable path instead of being
-/// stored under appid 0 while their own row is never refreshed.
-fn requested_items(items: Vec<StoreItem>, requested: &[u32]) -> Vec<StoreItem> {
-    items
-        .into_iter()
-        .filter(|item| requested.contains(&item.appid))
-        .collect()
 }
 
 use sqlx::Row;
