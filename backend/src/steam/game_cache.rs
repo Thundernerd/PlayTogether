@@ -242,12 +242,18 @@ impl GameCache {
 
     /// The background refresh: refetches queued apps from Steam until the
     /// queue is empty. `fetch_missing` skips apps refreshed in the meantime.
+    /// Apps Steam fails for are held back from the queue for a cooldown.
     async fn refresh_queued(state: &AppState, client: &impl SteamStore) {
         let mut worker = state.game_refresh.start_worker();
         while let Some(batch) = worker.next_batch() {
             info!(count = batch.len(), "refreshing stale game cache rows in the background");
-            if let Err(error) = Self::fetch_missing(state, client, &batch, |_, _| async {}).await {
-                warn!(%error, "background game cache refresh failed; rows stay due for refresh");
+            match Self::fetch_missing(state, client, &batch, |_, _| async {}).await {
+                Ok(failed) => worker.record_failed(&failed),
+                Err(error) => {
+                    warn!(%error, "background game cache refresh failed; rows stay due for refresh");
+                    // Which apps failed is unknown, so hold back the whole batch.
+                    worker.record_failed(&batch);
+                }
             }
         }
     }
@@ -281,19 +287,22 @@ impl GameCache {
         Ok(state.game_refresh.enqueue(&stale))
     }
 
+    /// Fetches the `appids` that are due from Steam and caches them. Apps
+    /// Steam fails for keep the row they had; returns their appids. When a
+    /// chunk request fails, every app in the chunk counts as failed.
     pub async fn fetch_missing<F, Fut>(
         state: &AppState,
         client: &impl SteamStore,
         appids: &[u32],
         mut on_progress: F,
-    ) -> AppResult<()>
+    ) -> AppResult<Vec<u32>>
     where
         F: FnMut(i64, i64) -> Fut,
         Fut: std::future::Future<Output = ()>,
     {
         if appids.is_empty() {
             on_progress(0, 0).await;
-            return Ok(());
+            return Ok(Vec::new());
         }
 
         let due = Self::get_due_appids(state, appids).await?;
@@ -307,7 +316,7 @@ impl GameCache {
         on_progress(0, total).await;
 
         if needs_fetch.is_empty() {
-            return Ok(());
+            return Ok(Vec::new());
         }
 
         let chunk_size = state.config.steam_chunk_size;
@@ -332,7 +341,7 @@ impl GameCache {
                 }
                 Err(error) => {
                     warn!(?chunk, %error, "Steam GetItems failed for chunk; leaving it for the next fetch");
-                    progress.record_failed(chunk.len()).await;
+                    progress.record_failed(chunk).await;
                 }
             }
 
@@ -355,7 +364,7 @@ impl GameCache {
                 }
                 Err(error) => {
                     warn!(appid, %error, "Steam GetItems failed for app; leaving it for the next fetch");
-                    progress.record_failed(1).await;
+                    progress.record_failed(&[appid]).await;
                 }
             }
             tokio::time::sleep(delay).await;
@@ -371,7 +380,7 @@ impl GameCache {
                 Ok(None) => after_details.push(appid),
                 Err(error) => {
                     warn!(appid, %error, "Steam appdetails failed; leaving it for the next fetch");
-                    progress.record_failed(1).await;
+                    progress.record_failed(&[appid]).await;
                 }
             }
             tokio::time::sleep(delay).await;
@@ -384,10 +393,10 @@ impl GameCache {
 
         info!(
             fetched = progress.fetched,
-            failed = progress.failed,
+            failed = progress.failed.len(),
             "game cache updated from Steam"
         );
-        Ok(())
+        Ok(progress.failed)
     }
 
     /// The items Steam returned for the `appids` asked for. Steam answers
@@ -723,7 +732,8 @@ pub async fn load_games_map(
 struct WalkProgress<F> {
     total: i64,
     fetched: i64,
-    failed: i64,
+    /// The appids Steam failed for.
+    failed: Vec<u32>,
     on_progress: F,
 }
 
@@ -736,13 +746,13 @@ where
         Self {
             total,
             fetched: 0,
-            failed: 0,
+            failed: Vec::new(),
             on_progress,
         }
     }
 
     fn done(&self) -> i64 {
-        self.fetched + self.failed
+        self.fetched + self.failed.len() as i64
     }
 
     fn is_complete(&self) -> bool {
@@ -754,8 +764,8 @@ where
         self.report().await;
     }
 
-    async fn record_failed(&mut self, apps: usize) {
-        self.failed += apps as i64;
+    async fn record_failed(&mut self, appids: &[u32]) {
+        self.failed.extend_from_slice(appids);
         self.report().await;
     }
 
@@ -778,6 +788,7 @@ mod tests {
     use crate::config::Config;
     use crate::jobs::registry::SyncJobRegistry;
     use crate::steam::GameRefreshQueue;
+    use crate::steam::game_refresh::{ManualClock, FAILED_REFRESH_COOLDOWN};
     use crate::steam::store::fake::FakeSteam;
 
     const PRICE_TTL_HOURS: i64 = 24;
@@ -826,7 +837,11 @@ mod tests {
         }
     }
 
-    async fn fetch_missing(state: &AppState, steam: &FakeSteam, appids: &[u32]) -> AppResult<()> {
+    async fn fetch_missing(
+        state: &AppState,
+        steam: &FakeSteam,
+        appids: &[u32],
+    ) -> AppResult<Vec<u32>> {
         GameCache::fetch_missing(state, steam, appids, |_, _| async {}).await
     }
 
@@ -1121,6 +1136,16 @@ mod tests {
         .await;
     }
 
+    /// Moves an existing row's `fetched_at` back past the price TTL.
+    async fn make_price_stale(db: &SqlitePool, appid: u32) {
+        sqlx::query("UPDATE steam_games SET fetched_at = ? WHERE appid = ?")
+            .bind((Utc::now() - Duration::hours(PRICE_TTL_HOURS + 1)).to_rfc3339())
+            .bind(appid as i64)
+            .execute(db)
+            .await
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn ensure_cached_serves_a_price_stale_row_as_is_and_queues_it_for_refresh() {
         let state = test_state(test_db().await);
@@ -1242,5 +1267,97 @@ mod tests {
             Some(STALE_RAW_JSON)
         );
         assert_eq!(state.game_refresh.queued(), vec![STALE]);
+    }
+
+    #[tokio::test]
+    async fn a_stale_app_steam_fails_for_is_not_queued_again_during_the_cooldown() {
+        let state = test_state(test_db().await);
+        insert_price_stale_failing_row(&state.db).await;
+        let steam = FakeSteam::new().failing_every_call_for(FAILING);
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[FAILING])
+            .await
+            .unwrap();
+        GameCache::refresh_queued(&state, &steam).await;
+
+        let starts_worker = GameCache::ensure_cached_from(&state, &steam, &[FAILING])
+            .await
+            .unwrap();
+
+        assert!(!starts_worker);
+        assert_eq!(state.game_refresh.queued(), Vec::<u32>::new());
+        assert_failing_row_unchanged_and_still_due(&state.db).await;
+    }
+
+    #[tokio::test]
+    async fn a_stale_app_steam_failed_for_is_queued_again_once_the_cooldown_has_passed() {
+        let mut state = test_state(test_db().await);
+        let clock = ManualClock::new();
+        state.game_refresh = Arc::new(GameRefreshQueue::with_clock(clock.clone()));
+        insert_price_stale_failing_row(&state.db).await;
+        let steam = FakeSteam::new().failing_every_call_for(FAILING);
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[FAILING])
+            .await
+            .unwrap();
+        GameCache::refresh_queued(&state, &steam).await;
+
+        clock.advance(FAILED_REFRESH_COOLDOWN);
+        let starts_worker = GameCache::ensure_cached_from(&state, &steam, &[FAILING])
+            .await
+            .unwrap();
+
+        assert!(starts_worker);
+        assert_eq!(state.game_refresh.queued(), vec![FAILING]);
+    }
+
+    #[tokio::test]
+    async fn an_app_refreshed_in_the_same_batch_as_a_failing_one_is_not_held_back() {
+        let mut state = test_state(test_db().await);
+        state.config.steam_chunk_size = 1;
+        insert_price_stale_failing_row(&state.db).await;
+        insert_price_stale_row(&state.db, STALE, STALE_RAW_JSON).await;
+        let steam = FakeSteam::new()
+            .with_store_item(STALE, "New name")
+            .failing_every_call_for(FAILING);
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[FAILING, STALE])
+            .await
+            .unwrap();
+        GameCache::refresh_queued(&state, &steam).await;
+        assert_eq!(
+            stored_name(&state.db, STALE).await.as_deref(),
+            Some("New name")
+        );
+
+        make_price_stale(&state.db, STALE).await;
+        let starts_worker = GameCache::ensure_cached_from(&state, &steam, &[FAILING, STALE])
+            .await
+            .unwrap();
+
+        assert!(starts_worker);
+        assert_eq!(state.game_refresh.queued(), vec![STALE]);
+    }
+
+    #[tokio::test]
+    async fn a_stale_app_whose_refresh_cannot_be_stored_is_not_queued_again_during_the_cooldown() {
+        let state = test_state(test_db().await);
+        insert_price_stale_row(&state.db, STALE, STALE_RAW_JSON).await;
+        sqlx::query(
+            "CREATE TRIGGER steam_games_read_only BEFORE UPDATE ON steam_games \
+             BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END",
+        )
+        .execute(&state.db)
+        .await
+        .unwrap();
+        let steam = FakeSteam::new().with_store_item(STALE, "New name");
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[STALE])
+            .await
+            .unwrap();
+        GameCache::refresh_queued(&state, &steam).await;
+
+        let starts_worker = GameCache::ensure_cached_from(&state, &steam, &[STALE])
+            .await
+            .unwrap();
+
+        assert!(!starts_worker);
+        assert_eq!(state.game_refresh.queued(), Vec::<u32>::new());
     }
 }
