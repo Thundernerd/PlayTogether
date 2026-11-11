@@ -38,6 +38,15 @@ export function useGroup() {
   const wishlistsLoading = useState<boolean>('groupWishlistsLoading', () => false)
   const sharedLoading = useState<boolean>('groupSharedLoading', () => false)
 
+  // The last failed request of each list, cleared when that list's next load starts, so a
+  // page can tell "nothing loaded" from "loaded and empty".
+  const librariesError = useState<string | null>('groupLibrariesError', () => null)
+  const wishlistsError = useState<string | null>('groupWishlistsError', () => null)
+  const sharedError = useState<string | null>('groupSharedError', () => null)
+  const listError = computed(
+    () => librariesError.value ?? wishlistsError.value ?? sharedError.value,
+  )
+
   const loading = ref(false)
   const actionLoading = ref(false)
   const error = ref<string | null>(null)
@@ -49,6 +58,9 @@ export function useGroup() {
     librariesLoading.value = false
     wishlistsLoading.value = false
     sharedLoading.value = false
+    librariesError.value = null
+    wishlistsError.value = null
+    sharedError.value = null
     inflight.libraries = null
     inflight.wishlists = null
     inflight.shared = null
@@ -95,15 +107,29 @@ export function useGroup() {
 
   // One request per list at a time, shared across instances. A request that resetMemberData()
   // has superseded no longer writes its data or clears the flag of the one that replaced it.
-  function loadList<T>(key: ListKey, flag: Ref<boolean>, target: Ref<T>, path: string) {
+  // A failure lands in the list's error state instead of rejecting, so callers (polling,
+  // refreshes) carry on and each page shows its own failed state.
+  function loadList<T>(
+    key: ListKey,
+    flag: Ref<boolean>,
+    failure: Ref<string | null>,
+    target: Ref<T>,
+    path: string,
+  ) {
     if (!me.value) return Promise.resolve()
     const pending = inflight[key]
     if (pending) return pending
 
     flag.value = true
+    failure.value = null
     const request: Promise<void> = api<T>(`/api/groups/${me.value.group.id}/${path}`)
       .then((data) => {
         if (inflight[key] === request) target.value = data
+      })
+      .catch((e: unknown) => {
+        if (inflight[key] === request) {
+          failure.value = e instanceof Error ? e.message : `Failed to load ${path}`
+        }
       })
       .finally(() => {
         if (inflight[key] !== request) return
@@ -114,9 +140,12 @@ export function useGroup() {
     return request
   }
 
-  const loadWishlists = () => loadList('wishlists', wishlistsLoading, wishlists, 'wishlists')
-  const loadLibraries = () => loadList('libraries', librariesLoading, libraries, 'libraries')
-  const loadSharedGames = () => loadList('shared', sharedLoading, sharedGames, 'shared-games')
+  const loadWishlists = () =>
+    loadList('wishlists', wishlistsLoading, wishlistsError, wishlists, 'wishlists')
+  const loadLibraries = () =>
+    loadList('libraries', librariesLoading, librariesError, libraries, 'libraries')
+  const loadSharedGames = () =>
+    loadList('shared', sharedLoading, sharedError, sharedGames, 'shared-games')
 
   async function refreshMemberData() {
     if (inflight.refresh) return inflight.refresh
@@ -318,6 +347,10 @@ export function useGroup() {
     librariesLoading,
     wishlistsLoading,
     sharedLoading,
+    librariesError,
+    wishlistsError,
+    sharedError,
+    listError,
     actionLoading,
     error,
     ensureLoaded,

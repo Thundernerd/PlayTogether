@@ -12,7 +12,15 @@ type LibrarySort =
   | 'name_desc'
 
 const group = useGroup()
-const { myLibrary, librarySyncComplete, librariesLoading, actionLoading, toggleSelection } = group
+const {
+  myLibrary,
+  librarySyncComplete,
+  librariesLoading,
+  librariesError,
+  actionLoading,
+  toggleSelection,
+  refreshMemberData,
+} = group
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
 
@@ -21,6 +29,17 @@ const libraryFilter = ref<LibraryFilter>('all')
 const releaseFilter = ref<ReleaseFilter>('all')
 const playTogetherFilter = ref<PlayTogetherFilter>('all')
 const librarySort = ref<LibrarySort>('playtime_desc')
+
+const status = computed(() =>
+  memberListStatus({
+    itemCount: myLibrary.value?.items.length ?? 0,
+    loaded: !!myLibrary.value,
+    loading: librariesLoading.value,
+    error: librariesError.value,
+    syncStatus: myLibrary.value?.member.sync_status.status,
+    syncComplete: librarySyncComplete.value,
+  }),
+)
 
 function formatPlaytime(minutes: number) {
   if (minutes <= 0) return 'Never played'
@@ -105,7 +124,7 @@ onUnmounted(stopPolling)
         <SyncStatusBadge :status="myLibrary.member.sync_status" />
       </div>
 
-      <template v-if="myLibrary?.items.length">
+      <template v-if="status === 'items' && myLibrary">
         <div class="library-toolbar">
           <input
             v-model="librarySearch"
@@ -161,8 +180,16 @@ onUnmounted(stopPolling)
         <p v-else class="muted">No games match your search or filters.</p>
       </template>
 
-      <LoadingMessage v-else-if="librariesLoading">Loading your library…</LoadingMessage>
-      <p v-else-if="librarySyncComplete" class="muted">Your library is empty.</p>
+      <LoadingMessage v-else-if="status === 'loading'">Loading your library…</LoadingMessage>
+      <ListLoadFailed
+        v-else-if="status === 'failed'"
+        :retrying="librariesLoading"
+        @retry="refreshMemberData"
+      >
+        Couldn't load your library.
+      </ListLoadFailed>
+      <p v-else-if="status === 'syncing'" class="muted">Syncing your library from Steam…</p>
+      <p v-else-if="status === 'empty'" class="muted">Your library is empty.</p>
       <p v-else class="muted">Sync your Steam data from the overview page first.</p>
     </section>
 

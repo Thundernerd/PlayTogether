@@ -7,7 +7,15 @@ type ReleaseFilter = 'all' | 'released' | 'unreleased' | 'unknown'
 type WishlistSort = 'name_asc' | 'name_desc' | 'date_desc' | 'date_asc'
 
 const group = useGroup()
-const { myWishlist, syncComplete, wishlistsLoading, actionLoading, toggleSelection } = group
+const {
+  myWishlist,
+  syncComplete,
+  wishlistsLoading,
+  wishlistsError,
+  actionLoading,
+  toggleSelection,
+  refreshMemberData,
+} = group
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
 
@@ -16,6 +24,17 @@ const wishlistFilter = ref<WishlistFilter>('all')
 const releaseFilter = ref<ReleaseFilter>('all')
 const playTogetherFilter = ref<PlayTogetherFilter>('all')
 const wishlistSort = ref<WishlistSort>('date_desc')
+
+const status = computed(() =>
+  memberListStatus({
+    itemCount: myWishlist.value?.items.length ?? 0,
+    loaded: !!myWishlist.value,
+    loading: wishlistsLoading.value,
+    error: wishlistsError.value,
+    syncStatus: myWishlist.value?.member.sync_status.status,
+    syncComplete: syncComplete.value,
+  }),
+)
 
 const filteredWishlistItems = computed(() => {
   const items = myWishlist.value?.items ?? []
@@ -87,7 +106,7 @@ onUnmounted(stopPolling)
         <SyncStatusBadge :status="myWishlist.member.sync_status" />
       </div>
 
-      <template v-if="myWishlist?.items.length">
+      <template v-if="status === 'items' && myWishlist">
         <div class="wishlist-toolbar">
           <input
             v-model="wishlistSearch"
@@ -141,8 +160,16 @@ onUnmounted(stopPolling)
         <p v-else class="muted">No games match your search or filters.</p>
       </template>
 
-      <LoadingMessage v-else-if="wishlistsLoading">Loading your wishlist…</LoadingMessage>
-      <p v-else-if="syncComplete" class="muted">Your wishlist is empty.</p>
+      <LoadingMessage v-else-if="status === 'loading'">Loading your wishlist…</LoadingMessage>
+      <ListLoadFailed
+        v-else-if="status === 'failed'"
+        :retrying="wishlistsLoading"
+        @retry="refreshMemberData"
+      >
+        Couldn't load your wishlist.
+      </ListLoadFailed>
+      <p v-else-if="status === 'syncing'" class="muted">Syncing your wishlist from Steam…</p>
+      <p v-else-if="status === 'empty'" class="muted">Your wishlist is empty.</p>
       <p v-else class="muted">Sync your Steam wishlist from the overview page first.</p>
     </section>
 
