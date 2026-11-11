@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Duration, Utc};
 use sqlx::SqlitePool;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::error::{AppError, AppResult};
 use crate::models::{GameDetail, GameInfo, GamePlayModes, GamePrice, GameTrailer};
@@ -11,6 +11,7 @@ use crate::steam::client::{
     store_item_has_details,
 };
 use crate::steam::categories::play_modes_from_item;
+use crate::steam::store::SteamStore;
 use crate::steam::pricing::price_from_store_item;
 use crate::steam::media_urls::{
     collect_trailers, header_image_url, header_image_url_from_app_details, header_image_url_from_item,
@@ -73,6 +74,15 @@ impl GameCache {
     }
 
     pub async fn ensure_detail_cached(state: &AppState, appid: u32) -> AppResult<()> {
+        let client = SteamClient::new(state.http.clone());
+        Self::ensure_detail_cached_from(state, &client, appid).await
+    }
+
+    async fn ensure_detail_cached_from(
+        state: &AppState,
+        client: &impl SteamStore,
+        appid: u32,
+    ) -> AppResult<()> {
         let row = Self::load_row(&state.db, appid).await?;
         if let Some(row) = &row {
             if let Ok(item) = serde_json::from_str::<StoreItem>(&row.raw_json) {
@@ -82,7 +92,6 @@ impl GameCache {
             }
         }
 
-        let client = SteamClient::new(state.http.clone());
         let items = client.fetch_store_item_details(appid).await?;
         if items.is_empty() {
             // Steam no longer lists the app; show what the cache already has.
@@ -181,11 +190,13 @@ impl GameCache {
     }
 
     pub async fn ensure_cached(state: &AppState, appids: &[u32]) -> AppResult<()> {
-        Self::fetch_missing(state, appids, |_, _| async {}).await
+        let client = SteamClient::new(state.http.clone());
+        Self::fetch_missing(state, &client, appids, |_, _| async {}).await
     }
 
     pub async fn fetch_missing<F, Fut>(
         state: &AppState,
+        client: &impl SteamStore,
         appids: &[u32],
         mut on_progress: F,
     ) -> AppResult<()>
@@ -219,14 +230,26 @@ impl GameCache {
             return Ok(());
         }
 
-        let client = SteamClient::new(state.http.clone());
         let chunk_size = state.config.steam_chunk_size;
         let delay = state.config.steam_chunk_delay_ms;
         let mut done = 0i64;
         let mut still_missing = Vec::new();
+        // Apps Steam failed for keep the row they have, so the next request
+        // fetches them again; they still count towards progress.
+        let mut failed = 0usize;
 
         for chunk in needs_fetch.chunks(chunk_size) {
-            let items = client.fetch_store_items(chunk).await?;
+            let items = match client.fetch_store_items(chunk).await {
+                Ok(items) => Self::requested_items(chunk, items),
+                Err(error) => {
+                    warn!(?chunk, %error, "Steam GetItems failed for chunk; skipping it");
+                    failed += chunk.len();
+                    done += chunk.len() as i64;
+                    on_progress(done, total).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+                    continue;
+                }
+            };
             let returned: HashSet<u32> = items.iter().map(|i| i.appid).collect();
             Self::upsert_items(state, &items).await?;
 
@@ -246,25 +269,42 @@ impl GameCache {
 
         let mut after_individual = Vec::new();
         for appid in still_missing {
-            let items = client.fetch_store_items(&[appid]).await?;
-            if items.is_empty() {
-                after_individual.push(appid);
-            } else {
-                Self::upsert_items(state, &items).await?;
-                done += 1;
-                on_progress(done, total).await;
+            match client.fetch_store_items(&[appid]).await {
+                Ok(items) => {
+                    let items = Self::requested_items(&[appid], items);
+                    if items.is_empty() {
+                        after_individual.push(appid);
+                    } else {
+                        Self::upsert_items(state, &items).await?;
+                        done += 1;
+                        on_progress(done, total).await;
+                    }
+                }
+                Err(error) => {
+                    warn!(appid, %error, "Steam GetItems failed for app; keeping the cached row");
+                    failed += 1;
+                    done += 1;
+                    on_progress(done, total).await;
+                }
             }
             tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
         }
 
         let mut after_details = Vec::new();
         for appid in after_individual {
-            if let Some(detail) = client.fetch_app_details(appid).await? {
-                Self::upsert_from_app_details(state, appid, &detail).await?;
-                done += 1;
-                on_progress(done, total).await;
-            } else {
-                after_details.push(appid);
+            match client.fetch_app_details(appid).await {
+                Ok(Some(detail)) => {
+                    Self::upsert_from_app_details(state, appid, &detail).await?;
+                    done += 1;
+                    on_progress(done, total).await;
+                }
+                Ok(None) => after_details.push(appid),
+                Err(error) => {
+                    warn!(appid, %error, "Steam appdetails failed; keeping the cached row");
+                    failed += 1;
+                    done += 1;
+                    on_progress(done, total).await;
+                }
             }
             tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
         }
@@ -275,8 +315,20 @@ impl GameCache {
             on_progress(done, total).await;
         }
 
-        info!(fetched = total, "game cache updated from Steam");
+        info!(
+            fetched = total - failed as i64,
+            failed, "game cache updated from Steam"
+        );
         Ok(())
+    }
+
+    /// The items Steam returned for the `appids` asked for. Steam answers
+    /// delisted or hidden apps with an item whose appid is 0.
+    fn requested_items(appids: &[u32], items: Vec<StoreItem>) -> Vec<StoreItem> {
+        items
+            .into_iter()
+            .filter(|item| appids.contains(&item.appid))
+            .collect()
     }
 
     async fn upsert_items(state: &AppState, items: &[StoreItem]) -> AppResult<()> {
@@ -584,7 +636,14 @@ use sqlx::Row;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
     use sqlx::sqlite::SqlitePoolOptions;
+    use tokio::sync::RwLock;
+
+    use crate::config::Config;
+    use crate::jobs::registry::SyncJobRegistry;
+    use crate::steam::store::fake::FakeSteam;
 
     const PRICE_TTL_HOURS: i64 = 24;
     const GAME_TTL_DAYS: i64 = 7;
@@ -610,6 +669,43 @@ mod tests {
             .unwrap();
         sqlx::migrate!("./migrations").run(&db).await.unwrap();
         db
+    }
+
+    /// An `AppState` over `db` with no delay between Steam calls.
+    fn test_state(db: SqlitePool) -> AppState {
+        AppState {
+            db,
+            http: reqwest::Client::new(),
+            tags: Arc::new(RwLock::new(HashMap::new())),
+            sync_jobs: Arc::new(SyncJobRegistry::new()),
+            config: Config {
+                database_url: "sqlite::memory:".into(),
+                bind_addr: "127.0.0.1:0".into(),
+                game_cache_ttl_days: GAME_TTL_DAYS,
+                price_cache_ttl_hours: PRICE_TTL_HOURS,
+                steam_chunk_size: 50,
+                steam_chunk_delay_ms: 0,
+                steam_api_key: None,
+            },
+        }
+    }
+
+    async fn fetch_missing(state: &AppState, steam: &FakeSteam, appids: &[u32]) -> AppResult<()> {
+        GameCache::fetch_missing(state, steam, appids, |_, _| async {}).await
+    }
+
+    async fn stored_raw_json(db: &SqlitePool, appid: u32) -> Option<String> {
+        GameCache::load_row(db, appid)
+            .await
+            .unwrap()
+            .map(|row| row.raw_json)
+    }
+
+    async fn stored_name(db: &SqlitePool, appid: u32) -> Option<String> {
+        GameCache::load_game(db, appid)
+            .await
+            .unwrap()
+            .map(|game| game.name)
     }
 
     async fn insert_game(
@@ -721,5 +817,139 @@ mod tests {
             .unwrap();
 
         assert_eq!(cached, HashSet::new());
+    }
+
+    const LISTED: u32 = 2001;
+    const HIDDEN: u32 = 2002;
+
+    #[tokio::test]
+    async fn an_app_steam_answers_with_appid_0_is_stored_as_unavailable_and_appid_0_is_not_stored()
+    {
+        let state = test_state(test_db().await);
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .with_hidden_app(HIDDEN);
+
+        fetch_missing(&state, &steam, &[LISTED, HIDDEN])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            stored_raw_json(&state.db, HIDDEN).await.as_deref(),
+            Some("{}")
+        );
+        assert_eq!(stored_raw_json(&state.db, 0).await, None);
+        assert_eq!(
+            stored_name(&state.db, LISTED).await.as_deref(),
+            Some("Listed")
+        );
+    }
+
+    const ONLY_IN_APP_DETAILS: u32 = 2003;
+
+    #[tokio::test]
+    async fn an_app_only_appdetails_knows_is_stored_from_app_details() {
+        let state = test_state(test_db().await);
+        let steam = FakeSteam::new().with_app_details(ONLY_IN_APP_DETAILS, "Details only");
+
+        fetch_missing(&state, &steam, &[ONLY_IN_APP_DETAILS])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            stored_name(&state.db, ONLY_IN_APP_DETAILS).await.as_deref(),
+            Some("Details only")
+        );
+        assert_ne!(
+            stored_raw_json(&state.db, ONLY_IN_APP_DETAILS)
+                .await
+                .as_deref(),
+            Some("{}")
+        );
+    }
+
+    const FAILING: u32 = 2004;
+    const FAILING_RAW_JSON: &str = r#"{"appid":2004,"name":"Old row"}"#;
+
+    /// A row for `FAILING` old enough to be fetched again.
+    async fn insert_price_stale_failing_row(db: &SqlitePool) {
+        insert_game(
+            db,
+            FAILING,
+            FAILING_RAW_JSON,
+            Some(true),
+            Utc::now() - Duration::hours(PRICE_TTL_HOURS + 1),
+        )
+        .await;
+    }
+
+    async fn assert_failing_row_unchanged_and_still_due(db: &SqlitePool) {
+        assert_eq!(
+            stored_raw_json(db, FAILING).await.as_deref(),
+            Some(FAILING_RAW_JSON)
+        );
+        let stale = GameCache::get_price_stale_appids(db, &[FAILING], PRICE_TTL_HOURS)
+            .await
+            .unwrap();
+        assert_eq!(stale, HashSet::from([FAILING]));
+    }
+
+    #[tokio::test]
+    async fn a_chunk_steam_fails_for_is_skipped_and_the_other_chunks_are_cached() {
+        let mut state = test_state(test_db().await);
+        state.config.steam_chunk_size = 1;
+        insert_price_stale_failing_row(&state.db).await;
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .with_store_item(FAILING, "New name")
+            .failing_for(FAILING);
+
+        fetch_missing(&state, &steam, &[FAILING, LISTED])
+            .await
+            .unwrap();
+
+        assert_failing_row_unchanged_and_still_due(&state.db).await;
+        assert_eq!(
+            stored_name(&state.db, LISTED).await.as_deref(),
+            Some("Listed")
+        );
+    }
+
+    #[tokio::test]
+    async fn an_app_appdetails_fails_for_keeps_its_row_instead_of_becoming_unavailable() {
+        let state = test_state(test_db().await);
+        insert_price_stale_failing_row(&state.db).await;
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .failing_app_details_for(FAILING);
+
+        fetch_missing(&state, &steam, &[FAILING, LISTED])
+            .await
+            .unwrap();
+
+        assert_failing_row_unchanged_and_still_due(&state.db).await;
+        assert_eq!(
+            stored_name(&state.db, LISTED).await.as_deref(),
+            Some("Listed")
+        );
+    }
+
+    #[tokio::test]
+    async fn an_app_the_single_app_retry_fails_for_keeps_its_row_instead_of_becoming_unavailable() {
+        let state = test_state(test_db().await);
+        insert_price_stale_failing_row(&state.db).await;
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .failing_when_asked_alone_for(FAILING);
+
+        fetch_missing(&state, &steam, &[FAILING, LISTED])
+            .await
+            .unwrap();
+
+        assert_failing_row_unchanged_and_still_due(&state.db).await;
+        assert_eq!(
+            stored_name(&state.db, LISTED).await.as_deref(),
+            Some("Listed")
+        );
     }
 }
