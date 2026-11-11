@@ -1201,4 +1201,29 @@ mod tests {
         assert!(starts_worker);
         assert_eq!(state.game_refresh.queued(), vec![STALE_LATER]);
     }
+
+    #[tokio::test]
+    async fn ensure_cached_serves_a_row_past_only_the_game_ttl_as_is_and_queues_it_for_refresh() {
+        let mut state = test_state(test_db().await);
+        state.config.price_cache_ttl_hours = (GAME_TTL_DAYS + 30) * 24;
+        insert_game(
+            &state.db,
+            STALE,
+            STALE_RAW_JSON,
+            Some(true),
+            Utc::now() - Duration::days(GAME_TTL_DAYS + 1),
+        )
+        .await;
+        let steam = FakeSteam::new().with_store_item(STALE, "New name");
+
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[STALE])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            stored_raw_json(&state.db, STALE).await.as_deref(),
+            Some(STALE_RAW_JSON)
+        );
+        assert_eq!(state.game_refresh.queued(), vec![STALE]);
+    }
 }
