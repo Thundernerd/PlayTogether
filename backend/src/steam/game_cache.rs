@@ -354,14 +354,16 @@ impl GameCache {
 
             Self::upsert_row(
                 state,
-                appid,
-                &name,
-                &short_description,
-                &header_image_url,
-                &tags_json,
-                &raw_json,
-                is_released,
-                &now,
+                SteamGameUpsert {
+                    appid,
+                    name: &name,
+                    short_description: &short_description,
+                    header_image_url: &header_image_url,
+                    tags_json: &tags_json,
+                    raw_json: &raw_json,
+                    is_released,
+                    fetched_at: &now,
+                },
             )
             .await?;
         }
@@ -395,14 +397,16 @@ impl GameCache {
 
         Self::upsert_row(
             state,
-            appid,
-            &name,
-            &short_description,
-            &header_image_url,
-            "[]",
-            &raw_json,
-            is_released,
-            &now,
+            SteamGameUpsert {
+                appid,
+                name: &name,
+                short_description: &short_description,
+                header_image_url: &header_image_url,
+                tags_json: "[]",
+                raw_json: &raw_json,
+                is_released,
+                fetched_at: &now,
+            },
         )
         .await
     }
@@ -416,29 +420,31 @@ impl GameCache {
 
         Self::upsert_row(
             state,
-            appid,
-            &name,
-            short_description,
-            &header_image_url,
-            "[]",
-            "{}",
-            None,
-            &now,
+            SteamGameUpsert {
+                appid,
+                name: &name,
+                short_description,
+                header_image_url: &header_image_url,
+                tags_json: "[]",
+                raw_json: "{}",
+                is_released: None,
+                fetched_at: &now,
+            },
         )
         .await
     }
 
-    async fn upsert_row(
-        state: &AppState,
-        appid: u32,
-        name: &str,
-        short_description: &str,
-        header_image_url: &str,
-        tags_json: &str,
-        raw_json: &str,
-        is_released: Option<bool>,
-        fetched_at: &str,
-    ) -> AppResult<()> {
+    async fn upsert_row(state: &AppState, row: SteamGameUpsert<'_>) -> AppResult<()> {
+        let SteamGameUpsert {
+            appid,
+            name,
+            short_description,
+            header_image_url,
+            tags_json,
+            raw_json,
+            is_released,
+            fetched_at,
+        } = row;
         let is_released_value = is_released.map(|released| if released { 1 } else { 0 });
 
         sqlx::query(
@@ -466,6 +472,18 @@ impl GameCache {
 
         Ok(())
     }
+}
+
+/// The fields written to one `steam_games` row by `GameCache::upsert_row`.
+struct SteamGameUpsert<'a> {
+    appid: u32,
+    name: &'a str,
+    short_description: &'a str,
+    header_image_url: &'a str,
+    tags_json: &'a str,
+    raw_json: &'a str,
+    is_released: Option<bool>,
+    fetched_at: &'a str,
 }
 
 struct GameRow {
@@ -554,7 +572,7 @@ impl GameRow {
 
         let screenshots = store_item
             .as_ref()
-            .map(|item| screenshot_urls_from_item(item))
+            .map(screenshot_urls_from_item)
             .unwrap_or_default();
 
         let trailers = store_item

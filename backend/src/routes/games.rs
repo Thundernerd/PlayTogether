@@ -68,7 +68,7 @@ pub async fn stream_trailer_video(
     }
 
     let stream = upstream.bytes_stream().map(|chunk| {
-        chunk.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+        chunk.map_err(std::io::Error::other)
     });
 
     builder
