@@ -38,8 +38,9 @@ export function useGroup() {
   const wishlistsLoading = useState<boolean>('groupWishlistsLoading', () => false)
   const sharedLoading = useState<boolean>('groupSharedLoading', () => false)
 
-  // The last failed request of each list, cleared when that list's next load starts, so a
-  // page can tell "nothing loaded" from "loaded and empty".
+  // The last failed request of each list, kept until a load of that list succeeds, so a
+  // page can tell "nothing loaded" from "loaded and empty". Not clearing it when a retry or
+  // poll starts keeps the failed state steady while a sync keeps polling a failing endpoint.
   const librariesError = useState<string | null>('groupLibrariesError', () => null)
   const wishlistsError = useState<string | null>('groupWishlistsError', () => null)
   const sharedError = useState<string | null>('groupSharedError', () => null)
@@ -112,7 +113,7 @@ export function useGroup() {
   function loadList<T>(
     key: ListKey,
     flag: Ref<boolean>,
-    failure: Ref<string | null>,
+    errorRef: Ref<string | null>,
     target: Ref<T>,
     path: string,
   ) {
@@ -121,14 +122,15 @@ export function useGroup() {
     if (pending) return pending
 
     flag.value = true
-    failure.value = null
     const request: Promise<void> = api<T>(`/api/groups/${me.value.group.id}/${path}`)
       .then((data) => {
-        if (inflight[key] === request) target.value = data
+        if (inflight[key] !== request) return
+        target.value = data
+        errorRef.value = null
       })
       .catch((e: unknown) => {
         if (inflight[key] === request) {
-          failure.value = e instanceof Error ? e.message : `Failed to load ${path}`
+          errorRef.value = e instanceof Error ? e.message : 'Failed to load group data'
         }
       })
       .finally(() => {

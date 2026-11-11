@@ -7,7 +7,7 @@ export type ListStatus = 'items' | 'loading' | 'failed' | 'syncing' | 'empty' | 
 
 export function memberListStatus(list: {
   itemCount: number
-  /** The member's entry from the last successful load, if any. */
+  /** Whether a load has returned the member's entry yet. */
   loaded: boolean
   loading: boolean
   error: string | null
