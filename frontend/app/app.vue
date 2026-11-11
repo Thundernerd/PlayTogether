@@ -1,11 +1,33 @@
+<script setup lang="ts">
+// PROTOTYPE (issue #1): ?style= picks one of the app-wide visual styles in
+// assets/prototype-styles.css. Dev only: in production builds import.meta.dev is
+// false, so no data-style attribute is set and the switcher is not bundled.
+import { resolvePrototypeStyle } from '~/utils/prototypeStyles'
+
+const PrototypeStyleSwitcher = import.meta.dev
+  ? defineAsyncComponent(() => import('~/components/PrototypeStyleSwitcher.vue'))
+  : null
+
+const route = useRoute()
+const prototypeStyle = computed(() =>
+  import.meta.dev ? resolvePrototypeStyle(route.query.style) : undefined,
+)
+
+if (import.meta.dev) {
+  // Mirrored onto <html> so <body> and teleported content (GameDetailModal) are styled too.
+  useHead({ htmlAttrs: { 'data-style': prototypeStyle } })
+}
+</script>
+
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :data-style="prototypeStyle">
     <header class="app-header">
       <NuxtLink to="/" class="brand">PlayTogether</NuxtLink>
     </header>
     <main class="app-main">
       <NuxtPage />
     </main>
+    <component :is="PrototypeStyleSwitcher" v-if="PrototypeStyleSwitcher" />
   </div>
 </template>
 
