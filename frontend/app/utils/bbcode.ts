@@ -68,6 +68,13 @@ function sanitizeHtml(html: string): string {
             continue
           }
 
+          if (tag === 'img' && attr.name === 'loading') {
+            if (attr.value !== 'lazy') {
+              element.removeAttribute(attr.name)
+            }
+            continue
+          }
+
           if (attr.name === 'class' || attr.name === 'style') {
             continue
           }
