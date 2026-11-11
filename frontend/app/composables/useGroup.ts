@@ -6,6 +6,18 @@ import type {
   SharedGame,
   SyncStatus,
 } from '~/types/api'
+import type { Ref } from 'vue'
+
+// In-flight requests, shared by every useGroup() instance like the loading flags, so the
+// layout and a page refreshing at once share one request instead of racing on the flags.
+// Module scope is safe here: these loads only run on the client (onMounted, polling, actions).
+type ListKey = 'libraries' | 'wishlists' | 'shared'
+const inflight: Record<ListKey | 'refresh', Promise<void> | null> = {
+  libraries: null,
+  wishlists: null,
+  shared: null,
+  refresh: null,
+}
 
 export function useGroup() {
   const route = useRoute()
@@ -21,10 +33,12 @@ export function useGroup() {
   const libraries = useState<MemberLibrary[]>('groupLibraries', () => [])
   const sharedGames = useState<SharedGame[]>('groupSharedGames', () => [])
 
+  // Shared like the data above, so every page's useGroup() sees the loads the layout starts.
+  const librariesLoading = useState<boolean>('groupLibrariesLoading', () => false)
+  const wishlistsLoading = useState<boolean>('groupWishlistsLoading', () => false)
+  const sharedLoading = useState<boolean>('groupSharedLoading', () => false)
+
   const loading = ref(false)
-  const librariesLoading = ref(false)
-  const wishlistsLoading = ref(false)
-  const sharedLoading = ref(false)
   const actionLoading = ref(false)
   const error = ref<string | null>(null)
 
@@ -35,6 +49,9 @@ export function useGroup() {
     librariesLoading.value = false
     wishlistsLoading.value = false
     sharedLoading.value = false
+    inflight.libraries = null
+    inflight.wishlists = null
+    inflight.shared = null
   }
 
   const isMember = computed(
@@ -53,92 +70,67 @@ export function useGroup() {
     () => !!me.value && myWishlist.value?.member.sync_status.status === 'complete',
   )
 
+  // Same sync job as syncComplete, read from /libraries so the library page needn't wait on /wishlists.
+  const librarySyncComplete = computed(
+    () => myLibrary.value?.member.sync_status.status === 'complete',
+  )
+
   const anyMemberSyncing = computed(
     () => groupDetail.value?.members.some((m) => m.sync_status.status === 'running') ?? false,
   )
 
   const groupBasePath = computed(() => `/g/${inviteCode.value}`)
 
-  let librariesInflight: Promise<void> | null = null
-  let wishlistsInflight: Promise<void> | null = null
-  let sharedInflight: Promise<void> | null = null
-  let refreshInflight: Promise<void> | null = null
-
   async function loadGroup() {
     groupDetail.value = await api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`)
   }
 
-  async function loadMe() {
-    if (!token.value) {
-      me.value = null
-      return
-    }
+  async function fetchMe(): Promise<MeResponse | null> {
     try {
-      me.value = await api<MeResponse>('/api/members/me')
+      return await api<MeResponse>('/api/members/me')
     } catch {
-      me.value = null
+      return null
     }
   }
 
-  async function loadWishlists() {
-    if (!me.value) return
-    if (wishlistsInflight) return wishlistsInflight
+  // One request per list at a time, shared across instances. A request that resetMemberData()
+  // has superseded no longer writes its data or clears the flag of the one that replaced it.
+  function loadList<T>(key: ListKey, flag: Ref<boolean>, target: Ref<T>, path: string) {
+    if (!me.value) return Promise.resolve()
+    const pending = inflight[key]
+    if (pending) return pending
 
-    wishlistsLoading.value = true
-    wishlistsInflight = (async () => {
-      try {
-        wishlists.value = await api<MemberWishlist[]>(`/api/groups/${me.value!.group.id}/wishlists`)
-      } finally {
-        wishlistsLoading.value = false
-        wishlistsInflight = null
-      }
-    })()
-    return wishlistsInflight
+    flag.value = true
+    const request: Promise<void> = api<T>(`/api/groups/${me.value.group.id}/${path}`)
+      .then((data) => {
+        if (inflight[key] === request) target.value = data
+      })
+      .finally(() => {
+        if (inflight[key] !== request) return
+        flag.value = false
+        inflight[key] = null
+      })
+    inflight[key] = request
+    return request
   }
 
-  async function loadLibraries() {
-    if (!me.value) return
-    if (librariesInflight) return librariesInflight
-
-    librariesLoading.value = true
-    librariesInflight = (async () => {
-      try {
-        libraries.value = await api<MemberLibrary[]>(`/api/groups/${me.value!.group.id}/libraries`)
-      } finally {
-        librariesLoading.value = false
-        librariesInflight = null
-      }
-    })()
-    return librariesInflight
-  }
-
-  async function loadSharedGames() {
-    if (!me.value) return
-    if (sharedInflight) return sharedInflight
-
-    sharedLoading.value = true
-    sharedInflight = (async () => {
-      try {
-        sharedGames.value = await api<SharedGame[]>(`/api/groups/${me.value!.group.id}/shared-games`)
-      } finally {
-        sharedLoading.value = false
-        sharedInflight = null
-      }
-    })()
-    return sharedInflight
-  }
+  const loadWishlists = () => loadList('wishlists', wishlistsLoading, wishlists, 'wishlists')
+  const loadLibraries = () => loadList('libraries', librariesLoading, libraries, 'libraries')
+  const loadSharedGames = () => loadList('shared', sharedLoading, sharedGames, 'shared-games')
 
   async function refreshMemberData() {
-    if (refreshInflight) return refreshInflight
-    refreshInflight = Promise.all([
+    if (inflight.refresh) return inflight.refresh
+    inflight.refresh = Promise.all([
       loadGroup(),
       loadLibraries(),
       loadWishlists(),
       loadSharedGames(),
-    ]).finally(() => {
-      refreshInflight = null
-    })
-    return refreshInflight
+    ])
+      .then(() => {})
+      .finally(() => {
+        inflight.refresh = null
+      })
+    return inflight.refresh
   }
 
   async function ensureLoaded(options: { wishlists?: boolean; libraries?: boolean; shared?: boolean } = {}) {
@@ -146,12 +138,16 @@ export function useGroup() {
     loading.value = true
     error.value = null
     try {
-      if (!groupDetail.value) {
-        await loadGroup()
-      }
-      if (token.value && !me.value) {
-        await loadMe()
-      }
+      const [nextGroup, nextMe] = await Promise.all([
+        groupDetail.value
+          ? undefined
+          : api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`),
+        token.value && !me.value ? fetchMe() : undefined,
+      ])
+      // Assign and start the list loads in one synchronous step: otherwise Vue renders the
+      // member's page before the loading flags are set, flashing its empty / not-synced text.
+      if (nextGroup) groupDetail.value = nextGroup
+      if (nextMe !== undefined) me.value = nextMe
       if (isMember.value) {
         const fetches: Promise<void>[] = []
         if (options.libraries ?? true) fetches.push(loadLibraries())
@@ -316,6 +312,7 @@ export function useGroup() {
     myLibrary,
     isMember,
     syncComplete,
+    librarySyncComplete,
     anyMemberSyncing,
     loading,
     librariesLoading,
