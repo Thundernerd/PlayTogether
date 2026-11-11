@@ -115,11 +115,7 @@ onUnmounted(stopPolling)
         <SyncStatusBadge :status="myWishlist.member.sync_status" />
       </div>
 
-      <ListRefreshFailed
-        v-if="wishlistsRefreshFailed"
-        :retrying="wishlistsLoading"
-        @retry="retryListLoads"
-      />
+      <ListRefreshFailed v-if="wishlistsRefreshFailed" @retry="retryListLoads" />
 
       <template v-if="status === 'items' && myWishlist">
         <div class="wishlist-toolbar">

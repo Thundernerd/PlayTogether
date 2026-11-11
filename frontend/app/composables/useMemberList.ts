@@ -51,6 +51,7 @@ export function useMemberLists() {
 export function useMemberList<K extends ListKey>(key: K) {
   const lists = useMemberLists()
   const list = computed((): MemberListState<K> => lists.value[key])
+  const status = computed(() => countStatus(list.value))
 
   return {
     data: computed(() => list.value.data),
@@ -58,8 +59,8 @@ export function useMemberList<K extends ListKey>(key: K) {
     error: computed(() => list.value.error),
     loaded: computed(() => list.value.loaded),
     /** What the list's count (nav badge, overview link) shows. */
-    countStatus: computed(() => countStatus(list.value)),
+    countStatus: status,
     /** The list loaded before, but its last refresh failed: pages show the last list. */
-    refreshFailed: computed(() => list.value.loaded && list.value.error !== null),
+    refreshFailed: computed(() => status.value === 'stale'),
   }
 }

@@ -1,19 +1,17 @@
 <script setup lang="ts">
 // A loaded list's last refresh failed: a non-blocking line above the items the page still
-// shows (unlike ListLoadFailed, which stands in for a list that never loaded).
-defineProps<{
-  retrying?: boolean
-}>()
-
+// shows (unlike ListLoadFailed, which stands in for a list that never loaded). Try again stays
+// enabled while a request is in flight: a sync polls every 2s, so tying it to the loading flag
+// would flicker it, and a click mid-request just joins that request.
 defineEmits<{
   retry: []
 }>()
 </script>
 
 <template>
-  <div class="list-refresh-failed" role="status">
-    <p class="refresh-failed-message">Couldn't refresh: showing the last loaded list.</p>
-    <button class="btn" type="button" :disabled="retrying" @click="$emit('retry')">
+  <div class="list-refresh-failed">
+    <p class="refresh-failed-message" role="status">Couldn't refresh: showing the last loaded list.</p>
+    <button class="btn" type="button" @click="$emit('retry')">
       Try again
     </button>
   </div>

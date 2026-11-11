@@ -133,11 +133,7 @@ onUnmounted(stopPolling)
         <SyncStatusBadge :status="myLibrary.member.sync_status" />
       </div>
 
-      <ListRefreshFailed
-        v-if="librariesRefreshFailed"
-        :retrying="librariesLoading"
-        @retry="retryListLoads"
-      />
+      <ListRefreshFailed v-if="librariesRefreshFailed" @retry="retryListLoads" />
 
       <template v-if="status === 'items' && myLibrary">
         <div class="library-toolbar">

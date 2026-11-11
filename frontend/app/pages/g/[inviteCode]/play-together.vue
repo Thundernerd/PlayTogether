@@ -32,7 +32,7 @@ const status = computed(() =>
         Games someone wants to play — vote and rate to help the group decide what to play next.
       </p>
 
-      <ListRefreshFailed v-if="sharedRefreshFailed" :retrying="sharedLoading" @retry="retryListLoads" />
+      <ListRefreshFailed v-if="sharedRefreshFailed" @retry="retryListLoads" />
 
       <div v-if="status === 'items'" class="shared-list">
         <SharedGameRow
