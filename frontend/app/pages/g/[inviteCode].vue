@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const route = useRoute()
 const group = useGroup()
 const {
   groupDetail,
@@ -14,6 +15,7 @@ const {
   sharedLoading,
   actionLoading,
   error,
+  listError,
   groupBasePath,
   ensureLoaded,
   joinGroup,
@@ -24,6 +26,11 @@ const {
 } = group
 
 const joinDisplayName = ref('')
+
+// List failures show here only on pages without their own failed state (the overview).
+const layoutError = computed(
+  () => error.value ?? (route.meta.showsListErrors ? null : listError.value),
+)
 const { startPolling, stopPolling } = useSyncStatus(onSyncUpdate)
 
 const wishlistCount = computed(() => myWishlist.value?.items.length ?? 0)
@@ -86,7 +93,7 @@ onUnmounted(() => {
       @delete-group="deleteGroup"
     />
 
-    <p v-if="error" class="error-message">{{ error }}</p>
+    <p v-if="layoutError" class="error-message">{{ layoutError }}</p>
 
     <section v-if="!isMember" class="card join-panel">
       <h2 class="section-title">Join this group</h2>

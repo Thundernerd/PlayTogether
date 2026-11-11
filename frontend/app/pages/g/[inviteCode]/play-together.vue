@@ -1,6 +1,18 @@
 <script setup lang="ts">
+// This page shows its own failed state, so the layout skips the raw list error line.
+definePageMeta({ showsListErrors: true })
+
 const group = useGroup()
-const { sharedGames, sharedLoading, actionLoading, vote, rate, groupBasePath } = group
+const {
+  sharedGames,
+  sharedLoading,
+  sharedError,
+  actionLoading,
+  vote,
+  rate,
+  groupBasePath,
+  retryListLoads,
+} = group
 const { open: openGameDetail } = useGameDetail()
 </script>
 
@@ -24,6 +36,9 @@ const { open: openGameDetail } = useGameDetail()
         />
       </div>
       <LoadingMessage v-else-if="sharedLoading">Loading shared games…</LoadingMessage>
+      <ListLoadFailed v-else-if="sharedError" :retrying="sharedLoading" @retry="retryListLoads">
+        Couldn't load the shared games.
+      </ListLoadFailed>
       <p v-else class="muted">
         No games selected yet. Mark games on
         <NuxtLink :to="`${groupBasePath}/library`">your library</NuxtLink>
