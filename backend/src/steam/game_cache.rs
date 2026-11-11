@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use sqlx::SqlitePool;
 use tracing::info;
 
@@ -26,25 +26,8 @@ impl GameCache {
         appids: &[u32],
         ttl_days: i64,
     ) -> AppResult<HashSet<u32>> {
-        if appids.is_empty() {
-            return Ok(HashSet::new());
-        }
-
-        let cutoff = (Utc::now() - Duration::days(ttl_days)).to_rfc3339();
-        let placeholders: Vec<String> = appids.iter().map(|_| "?".to_string()).collect();
-        let query = format!(
-            "SELECT appid FROM steam_games WHERE appid IN ({}) AND fetched_at > ?",
-            placeholders.join(", ")
-        );
-
-        let mut q = sqlx::query_scalar::<_, i64>(&query);
-        for appid in appids {
-            q = q.bind(*appid as i64);
-        }
-        q = q.bind(cutoff);
-
-        let rows = q.fetch_all(db).await?;
-        Ok(rows.into_iter().map(|id| id as u32).collect())
+        let cutoff = Utc::now() - Duration::days(ttl_days);
+        Self::appids_by_fetched_at(db, appids, "fetched_at > ?", cutoff).await
     }
 
     pub async fn get_price_stale_appids(
@@ -52,14 +35,25 @@ impl GameCache {
         appids: &[u32],
         ttl_hours: i64,
     ) -> AppResult<HashSet<u32>> {
+        let cutoff = Utc::now() - Duration::hours(ttl_hours);
+        Self::appids_by_fetched_at(db, appids, "fetched_at <= ?", cutoff).await
+    }
+
+    /// The `appids` with a `steam_games` row whose `fetched_at` matches
+    /// `fetched_at_condition` (one `?`, bound to `cutoff`).
+    async fn appids_by_fetched_at(
+        db: &SqlitePool,
+        appids: &[u32],
+        fetched_at_condition: &str,
+        cutoff: DateTime<Utc>,
+    ) -> AppResult<HashSet<u32>> {
         if appids.is_empty() {
             return Ok(HashSet::new());
         }
 
-        let cutoff = (Utc::now() - Duration::hours(ttl_hours)).to_rfc3339();
         let placeholders: Vec<String> = appids.iter().map(|_| "?".to_string()).collect();
         let query = format!(
-            "SELECT appid FROM steam_games WHERE appid IN ({}) AND fetched_at <= ?",
+            "SELECT appid FROM steam_games WHERE appid IN ({}) AND {fetched_at_condition}",
             placeholders.join(", ")
         );
 
@@ -67,7 +61,7 @@ impl GameCache {
         for appid in appids {
             q = q.bind(*appid as i64);
         }
-        q = q.bind(cutoff);
+        q = q.bind(cutoff.to_rfc3339());
 
         let rows = q.fetch_all(db).await?;
         Ok(rows.into_iter().map(|id| id as u32).collect())
@@ -600,7 +594,7 @@ mod tests {
     const STEAM_STUB: u32 = 1003;
     const UNAVAILABLE: u32 = 1004;
     const FROM_APP_DETAILS: u32 = 1005;
-    const ALL: [u32; 5] = [
+    const ALL_FIXTURE_APPIDS: [u32; 5] = [
         COMING_SOON_WITHOUT_PRICE,
         WITHOUT_CATEGORIES,
         STEAM_STUB,
@@ -623,7 +617,7 @@ mod tests {
         appid: u32,
         raw_json: &str,
         is_released: Option<bool>,
-        fetched_at: chrono::DateTime<Utc>,
+        fetched_at: DateTime<Utc>,
     ) {
         sqlx::query(
             "INSERT INTO steam_games (appid, name, raw_json, is_released, fetched_at) VALUES (?, ?, ?, ?, ?)",
@@ -639,11 +633,11 @@ mod tests {
     }
 
     /// The kinds of row Steam leaves "incomplete" no matter how often we ask.
-    async fn insert_rows_steam_never_completes(db: &SqlitePool, fetched_at: chrono::DateTime<Utc>) {
+    async fn insert_rows_steam_never_completes(db: &SqlitePool, fetched_at: DateTime<Utc>) {
         insert_game(
             db,
             COMING_SOON_WITHOUT_PRICE,
-            r#"{"appid":1001,"name":"Soon","is_coming_soon":true,"categories":{"supported_player_categoryids":[2]}}"#,
+            &format!(r#"{{"appid":{COMING_SOON_WITHOUT_PRICE},"name":"Soon","is_coming_soon":true,"categories":{{"supported_player_categoryids":[2]}}}}"#),
             Some(false),
             fetched_at,
         )
@@ -651,7 +645,7 @@ mod tests {
         insert_game(
             db,
             WITHOUT_CATEGORIES,
-            r#"{"appid":1002,"name":"No modes","is_coming_soon":false,"best_purchase_option":{"formatted_final_price":"$9.99"}}"#,
+            &format!(r#"{{"appid":{WITHOUT_CATEGORIES},"name":"No modes","is_coming_soon":false,"best_purchase_option":{{"formatted_final_price":"$9.99"}}}}"#),
             Some(true),
             fetched_at,
         )
@@ -659,7 +653,7 @@ mod tests {
         insert_game(
             db,
             STEAM_STUB,
-            r#"{"appid":1003,"name":"","is_coming_soon":null,"basic_info":null,"best_purchase_option":null,"categories":null}"#,
+            &format!(r#"{{"appid":{STEAM_STUB},"name":"","is_coming_soon":null,"basic_info":null,"best_purchase_option":null,"categories":null}}"#),
             None,
             fetched_at,
         )
@@ -668,7 +662,7 @@ mod tests {
         insert_game(
             db,
             FROM_APP_DETAILS,
-            r#"{"name":"Old detail","steam_appid":1005,"short_description":null,"header_image":null,"coming_soon":false}"#,
+            &format!(r#"{{"name":"Old detail","steam_appid":{FROM_APP_DETAILS},"short_description":null,"header_image":null,"coming_soon":false}}"#),
             Some(true),
             fetched_at,
         )
@@ -680,7 +674,7 @@ mod tests {
         let db = test_db().await;
         insert_rows_steam_never_completes(&db, Utc::now()).await;
 
-        let stale = GameCache::get_price_stale_appids(&db, &ALL, PRICE_TTL_HOURS)
+        let stale = GameCache::get_price_stale_appids(&db, &ALL_FIXTURE_APPIDS, PRICE_TTL_HOURS)
             .await
             .unwrap();
 
@@ -692,11 +686,11 @@ mod tests {
         let db = test_db().await;
         insert_rows_steam_never_completes(&db, Utc::now()).await;
 
-        let cached = GameCache::get_cached_appids(&db, &ALL, GAME_TTL_DAYS)
+        let cached = GameCache::get_cached_appids(&db, &ALL_FIXTURE_APPIDS, GAME_TTL_DAYS)
             .await
             .unwrap();
 
-        assert_eq!(cached, HashSet::from(ALL));
+        assert_eq!(cached, HashSet::from(ALL_FIXTURE_APPIDS));
     }
 
     #[tokio::test]
@@ -705,15 +699,15 @@ mod tests {
         insert_rows_steam_never_completes(&db, Utc::now() - Duration::hours(PRICE_TTL_HOURS + 1))
             .await;
 
-        let stale = GameCache::get_price_stale_appids(&db, &ALL, PRICE_TTL_HOURS)
+        let stale = GameCache::get_price_stale_appids(&db, &ALL_FIXTURE_APPIDS, PRICE_TTL_HOURS)
             .await
             .unwrap();
-        let cached = GameCache::get_cached_appids(&db, &ALL, GAME_TTL_DAYS)
+        let cached = GameCache::get_cached_appids(&db, &ALL_FIXTURE_APPIDS, GAME_TTL_DAYS)
             .await
             .unwrap();
 
-        assert_eq!(stale, HashSet::from(ALL));
-        assert_eq!(cached, HashSet::from(ALL));
+        assert_eq!(stale, HashSet::from(ALL_FIXTURE_APPIDS));
+        assert_eq!(cached, HashSet::from(ALL_FIXTURE_APPIDS));
     }
 
     #[tokio::test]
@@ -722,7 +716,7 @@ mod tests {
         insert_rows_steam_never_completes(&db, Utc::now() - Duration::days(GAME_TTL_DAYS + 1))
             .await;
 
-        let cached = GameCache::get_cached_appids(&db, &ALL, GAME_TTL_DAYS)
+        let cached = GameCache::get_cached_appids(&db, &ALL_FIXTURE_APPIDS, GAME_TTL_DAYS)
             .await
             .unwrap();
 
