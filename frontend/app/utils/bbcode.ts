@@ -1,3 +1,5 @@
+import { steamAppImageBase } from '~/utils/steamImages'
+
 const ALLOWED_TAGS = new Set([
   'p',
   'br',
@@ -17,6 +19,10 @@ const ALLOWED_TAGS = new Set([
   'img',
   'span',
 ])
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value)
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -49,14 +55,21 @@ function sanitizeHtml(html: string): string {
 
         for (const attr of [...element.attributes]) {
           if (tag === 'a' && attr.name === 'href') {
-            if (!/^https?:\/\//i.test(attr.value)) {
+            if (!isHttpUrl(attr.value)) {
               element.removeAttribute(attr.name)
             }
             continue
           }
 
           if (tag === 'img' && (attr.name === 'src' || attr.name === 'alt')) {
-            if (attr.name === 'src' && !/^https?:\/\//i.test(attr.value)) {
+            if (attr.name === 'src' && !isHttpUrl(attr.value)) {
+              element.removeAttribute(attr.name)
+            }
+            continue
+          }
+
+          if (tag === 'img' && attr.name === 'loading') {
+            if (attr.value !== 'lazy') {
               element.removeAttribute(attr.name)
             }
             continue
@@ -78,13 +91,45 @@ function sanitizeHtml(html: string): string {
   return template.innerHTML
 }
 
-export function bbcodeToHtml(input: string): string {
+// Matches `{STEAM_APP_IMAGE}` and the mangled `http://STEAM_APP_IMAGE}` Steam has also sent.
+const STEAM_APP_IMAGE_PLACEHOLDER = /^(?:https?:\/\/)?\{?STEAM_APP_IMAGE\}/i
+
+function resolveImageUrl(raw: string | null | undefined, appid?: number | null): string | null {
+  let url = raw?.trim()
+  if (!url) return null
+  if (STEAM_APP_IMAGE_PLACEHOLDER.test(url)) {
+    if (appid == null) return null
+    url = url.replace(STEAM_APP_IMAGE_PLACEHOLDER, steamAppImageBase(appid))
+  }
+  return isHttpUrl(url) ? url : null
+}
+
+function imageTag(raw: string | null | undefined, appid?: number | null): string {
+  const src = resolveImageUrl(raw, appid)
+  return src ? `<img src="${src}" alt="" loading="lazy" />` : ''
+}
+
+/** Picks the still-image URL from an escaped `[img …]` tag body (after `img`). */
+function imageAttributeUrl(tagBody: string): string | null {
+  if (tagBody.startsWith('=')) {
+    const value = tagBody.slice(1).trim()
+    const quoted = /^&quot;([\s\S]*?)&quot;/.exec(value)
+    return quoted ? (quoted[1] ?? null) : (value.split(/\s+/)[0] ?? null)
+  }
+  const attrs: Record<string, string> = {}
+  for (const match of tagBody.matchAll(/(\w+)=(?:&quot;([\s\S]*?)&quot;|(\S+))/g)) {
+    attrs[match[1]!.toLowerCase()] = match[2] ?? match[3] ?? ''
+  }
+  return attrs.src || attrs.poster || null
+}
+
+export function bbcodeToHtml(input: string, appid?: number | null): string {
   let html = escapeHtml(input)
 
   html = html.replace(/\[url=(.*?)\]([\s\S]*?)\[\/url\]/gi, (_, href, label) => {
     const safeHref = String(href).trim()
     const safeLabel = String(label).trim()
-    if (!/^https?:\/\//i.test(safeHref)) {
+    if (!isHttpUrl(safeHref)) {
       return safeLabel
     }
     return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeLabel}</a>`
@@ -92,19 +137,22 @@ export function bbcodeToHtml(input: string): string {
 
   html = html.replace(/\[url\]([\s\S]*?)\[\/url\]/gi, (_, href) => {
     const safeHref = String(href).trim()
-    if (!/^https?:\/\//i.test(safeHref)) {
+    if (!isHttpUrl(safeHref)) {
       return safeHref
     }
     return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeHref}</a>`
   })
 
-  html = html.replace(/\[img\]([\s\S]*?)\[\/img\]/gi, (_, src) => {
-    const safeSrc = String(src).trim()
-    if (!/^https?:\/\//i.test(safeSrc)) {
-      return ''
-    }
-    return `<img src="${safeSrc}" alt="" loading="lazy" />`
-  })
+  html = html.replace(/\[img\]([\s\S]*?)\[\/img\]/gi, (_, src) => imageTag(src, appid))
+
+  // Steam's attribute forms: [img src="…" poster="…" …][/img] and [img=URL …].
+  // The input is already escaped here, so quotes appear as &quot;; a quoted value may contain `]`.
+  html = html.replace(
+    /\[img([\s=](?:&quot;(?:(?!&quot;)[^[])*&quot;|(?!&quot;)[^[\]])*)\](?:\s*\[\/img\])?/gi,
+    (_, tagBody) => imageTag(imageAttributeUrl(String(tagBody)), appid),
+  )
+  // Drop any unpaired [img] / [/img] left over so no tag text reaches the page.
+  html = html.replace(/\[\/?img\]/gi, '')
 
   html = html.replace(/\[\/?(h1|h2|h3|h4|p|b|i|u|strong|em|list|olist)\]/gi, (match, tag) => {
     const normalized = String(tag).toLowerCase()
@@ -124,13 +172,13 @@ export function bbcodeToHtml(input: string): string {
   return sanitizeHtml(html)
 }
 
-export function renderGameDescription(description?: string | null): string {
+export function renderGameDescription(description?: string | null, appid?: number | null): string {
   if (!description?.trim()) {
     return ''
   }
 
   if (description.includes('[') && description.includes(']')) {
-    return bbcodeToHtml(description)
+    return bbcodeToHtml(description, appid)
   }
 
   return sanitizeHtml(escapeHtml(description).replace(/\n/g, '<br />'))
