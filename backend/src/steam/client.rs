@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -123,8 +125,6 @@ impl SteamClient {
     /// appdetails rejects a list of appids (400) unless filters=price_overview,
     /// so this asks for a single app.
     pub async fn fetch_app_details(&self, appid: u32) -> AppResult<Option<AppDetailsData>> {
-        use std::collections::HashMap;
-
         let response = self
             .http
             .get(APP_DETAILS_URL)
@@ -134,11 +134,8 @@ impl SteamClient {
             .error_for_status()
             .map_err(|e| AppError::Steam(format!("appdetails request failed: {e}")))?;
 
-        let mut body: HashMap<String, AppDetailsEntry> = response.json().await?;
-        Ok(body
-            .remove(&appid.to_string())
-            .filter(|entry| entry.success)
-            .and_then(|entry| entry.data))
+        let body: HashMap<String, AppDetailsEntry> = response.json().await?;
+        Ok(app_details_for(appid, body))
     }
 }
 
@@ -385,6 +382,17 @@ pub struct AppDetailsData {
     pub coming_soon: Option<bool>,
 }
 
+/// appdetails answers `{"<appid>": {"success": …, "data": …}}`; the data
+/// counts only under the asked-for appid and when `success` is true.
+fn app_details_for(
+    appid: u32,
+    mut body: HashMap<String, AppDetailsEntry>,
+) -> Option<AppDetailsData> {
+    body.remove(&appid.to_string())
+        .filter(|entry| entry.success)
+        .and_then(|entry| entry.data)
+}
+
 pub fn derive_is_released_from_app_details(detail: &AppDetailsData) -> Option<bool> {
     if detail.coming_soon == Some(true) {
         Some(false)
@@ -430,5 +438,51 @@ mod tests {
             serde_json::from_str(r#"{"response":{"store_items":[]}}"#).unwrap();
 
         assert!(store_items_for(&[620], body).is_empty());
+    }
+
+    fn app_details_body(json: &str) -> HashMap<String, AppDetailsEntry> {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn app_details_for_returns_the_data_of_a_successful_entry() {
+        let body = app_details_body(
+            r#"{"620":{"success":true,"data":{
+                "type":"game","name":"Portal 2","steam_appid":620,"required_age":0,"is_free":false,
+                "short_description":"The sequel","header_image":"https://example.test/header.jpg"
+            }}}"#,
+        );
+
+        let detail = app_details_for(620, body).expect("details for 620");
+
+        assert_eq!(detail.name, "Portal 2");
+        assert_eq!(detail.steam_appid, 620);
+        assert_eq!(detail.short_description.as_deref(), Some("The sequel"));
+    }
+
+    #[test]
+    fn app_details_for_returns_none_when_steam_reports_no_success() {
+        // Steam's answer for an appid it has no store page for.
+        let body = app_details_body(r#"{"1234567":{"success":false}}"#);
+
+        assert!(app_details_for(1_234_567, body).is_none());
+    }
+
+    #[test]
+    fn app_details_for_ignores_data_alongside_success_false() {
+        let body = app_details_body(
+            r#"{"620":{"success":false,"data":{"name":"Portal 2","steam_appid":620}}}"#,
+        );
+
+        assert!(app_details_for(620, body).is_none());
+    }
+
+    #[test]
+    fn app_details_for_returns_none_for_an_envelope_keyed_by_another_appid() {
+        let body = app_details_body(
+            r#"{"400":{"success":true,"data":{"name":"Portal","steam_appid":400}}}"#,
+        );
+
+        assert!(app_details_for(620, body).is_none());
     }
 }
