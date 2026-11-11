@@ -105,7 +105,9 @@ function imageTag(raw: string | null | undefined, appid?: number | null): string
 /** Picks the still-image URL from an escaped `[img …]` tag body (after `img`). */
 function imageAttributeUrl(tagBody: string): string | null {
   if (tagBody.startsWith('=')) {
-    return tagBody.slice(1).trim().split(/\s+/)[0] ?? null
+    const value = tagBody.slice(1).trim()
+    const quoted = /^&quot;([\s\S]*?)&quot;/.exec(value)
+    return quoted ? (quoted[1] ?? null) : (value.split(/\s+/)[0] ?? null)
   }
   const attrs: Record<string, string> = {}
   for (const match of tagBody.matchAll(/(\w+)=(?:&quot;([\s\S]*?)&quot;|(\S+))/g)) {
@@ -137,11 +139,13 @@ export function bbcodeToHtml(input: string, appid?: number | null): string {
   html = html.replace(/\[img\]([\s\S]*?)\[\/img\]/gi, (_, src) => imageTag(src, appid))
 
   // Steam's attribute forms: [img src="…" poster="…" …][/img] and [img=URL …].
-  // The input is already escaped here, so quotes appear as &quot;.
-  html = html.replace(/\[img([\s=][^\]]*)\](?:\s*\[\/img\])?/gi, (_, tagBody) =>
-    imageTag(imageAttributeUrl(String(tagBody)), appid),
+  // The input is already escaped here, so quotes appear as &quot;; a quoted value may contain `]`.
+  html = html.replace(
+    /\[img([\s=](?:&quot;(?:(?!&quot;)[^[])*&quot;|(?!&quot;)[^[\]])*)\](?:\s*\[\/img\])?/gi,
+    (_, tagBody) => imageTag(imageAttributeUrl(String(tagBody)), appid),
   )
-  html = html.replace(/\[\/img\]/gi, '')
+  // Drop any unpaired [img] / [/img] left over so no tag text reaches the page.
+  html = html.replace(/\[\/?img\]/gi, '')
 
   html = html.replace(/\[\/?(h1|h2|h3|h4|p|b|i|u|strong|em|list|olist)\]/gi, (match, tag) => {
     const normalized = String(tag).toLowerCase()
