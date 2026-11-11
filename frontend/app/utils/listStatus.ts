@@ -8,12 +8,10 @@ export type ListStatus = 'items' | 'failed' | 'loading' | 'syncing' | 'empty' | 
 export function listStatus(list: {
   itemCount: number
   /**
-   * Whether a load has returned the list yet (for a member's own list, their entry in it;
-   * for the shared list, the record's `loaded` marker);
-   * once it has, a reload keeps the current status instead of showing 'loading'. Left out,
-   * every load shows 'loading'.
+   * Whether a load has returned what the page shows yet; once it has, a reload keeps the
+   * current status instead of showing 'loading'.
    */
-  loaded?: boolean
+  loaded: boolean
   loading: boolean
   error: string | null
   /** The member's Steam sync, for lists that come from it. Left out, no items is 'empty'. */

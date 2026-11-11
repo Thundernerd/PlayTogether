@@ -6,9 +6,9 @@ const group = useGroup()
 const { actionLoading, vote, rate, groupBasePath, retryListLoads } = group
 const {
   data: sharedGames,
-  loaded: sharedLoaded,
   loading: sharedLoading,
   error: sharedError,
+  loaded: sharedLoaded,
 } = useMemberList('shared')
 const { open: openGameDetail } = useGameDetail()
 
