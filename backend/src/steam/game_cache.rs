@@ -21,6 +21,14 @@ use crate::steam::media_urls::{
 
 pub struct GameCache;
 
+/// Which `steam_games` rows to match by `fetched_at`.
+#[derive(Clone, Copy)]
+enum FetchedAt {
+    Any,
+    After(DateTime<Utc>),
+    AtOrBefore(DateTime<Utc>),
+}
+
 impl GameCache {
     pub async fn get_cached_appids(
         db: &SqlitePool,
@@ -28,7 +36,7 @@ impl GameCache {
         ttl_days: i64,
     ) -> AppResult<HashSet<u32>> {
         let cutoff = Utc::now() - Duration::days(ttl_days);
-        Self::appids_by_fetched_at(db, appids, Some(("fetched_at > ?", cutoff))).await
+        Self::appids_by_fetched_at(db, appids, FetchedAt::After(cutoff)).await
     }
 
     pub async fn get_price_stale_appids(
@@ -37,21 +45,37 @@ impl GameCache {
         ttl_hours: i64,
     ) -> AppResult<HashSet<u32>> {
         let cutoff = Utc::now() - Duration::hours(ttl_hours);
-        Self::appids_by_fetched_at(db, appids, Some(("fetched_at <= ?", cutoff))).await
+        Self::appids_by_fetched_at(db, appids, FetchedAt::AtOrBefore(cutoff)).await
     }
 
     /// The `appids` with a `steam_games` row, however old.
     async fn get_stored_appids(db: &SqlitePool, appids: &[u32]) -> AppResult<HashSet<u32>> {
-        Self::appids_by_fetched_at(db, appids, None).await
+        Self::appids_by_fetched_at(db, appids, FetchedAt::Any).await
     }
 
-    /// The `appids` with a `steam_games` row, and when `fetched_at_filter` is
-    /// given, whose `fetched_at` matches its condition (one `?`, bound to its
-    /// cutoff).
+    /// The `appids` that are due for a fetch from Steam: no row, or a row past
+    /// the game or the price TTL.
+    async fn get_due_appids(state: &AppState, appids: &[u32]) -> AppResult<HashSet<u32>> {
+        let cached =
+            Self::get_cached_appids(&state.db, appids, state.config.game_cache_ttl_days).await?;
+        let price_stale = Self::get_price_stale_appids(
+            &state.db,
+            appids,
+            state.config.price_cache_ttl_hours,
+        )
+        .await?;
+        Ok(appids
+            .iter()
+            .copied()
+            .filter(|id| !cached.contains(id) || price_stale.contains(id))
+            .collect())
+    }
+
+    /// The `appids` with a `steam_games` row whose `fetched_at` matches.
     async fn appids_by_fetched_at(
         db: &SqlitePool,
         appids: &[u32],
-        fetched_at_filter: Option<(&str, DateTime<Utc>)>,
+        fetched_at: FetchedAt,
     ) -> AppResult<HashSet<u32>> {
         if appids.is_empty() {
             return Ok(HashSet::new());
@@ -62,16 +86,23 @@ impl GameCache {
             "SELECT appid FROM steam_games WHERE appid IN ({})",
             placeholders.join(", ")
         );
-        if let Some((condition, _)) = fetched_at_filter {
-            query.push_str(" AND ");
-            query.push_str(condition);
-        }
+        let cutoff = match fetched_at {
+            FetchedAt::Any => None,
+            FetchedAt::After(cutoff) => {
+                query.push_str(" AND fetched_at > ?");
+                Some(cutoff)
+            }
+            FetchedAt::AtOrBefore(cutoff) => {
+                query.push_str(" AND fetched_at <= ?");
+                Some(cutoff)
+            }
+        };
 
         let mut q = sqlx::query_scalar::<_, i64>(&query);
         for appid in appids {
             q = q.bind(*appid as i64);
         }
-        if let Some((_, cutoff)) = fetched_at_filter {
+        if let Some(cutoff) = cutoff {
             q = q.bind(cutoff.to_rfc3339());
         }
 
@@ -225,6 +256,7 @@ impl GameCache {
     /// Fetches the `appids` with no cached row and waits for them. Apps whose
     /// row is past a TTL are served as cached and queued for the background
     /// refresh. Returns true when the caller must start the refresh worker.
+    #[must_use = "when true, the caller must start the refresh worker"]
     async fn ensure_cached_from(
         state: &AppState,
         client: &impl SteamStore,
@@ -240,18 +272,11 @@ impl GameCache {
             Self::fetch_missing(state, client, &missing, |_, _| async {}).await?;
         }
 
-        let fresh = Self::get_cached_appids(&state.db, appids, state.config.game_cache_ttl_days)
-            .await?;
-        let price_stale = Self::get_price_stale_appids(
-            &state.db,
-            appids,
-            state.config.price_cache_ttl_hours,
-        )
-        .await?;
+        let due = Self::get_due_appids(state, appids).await?;
         let stale: Vec<u32> = appids
             .iter()
             .copied()
-            .filter(|id| stored.contains(id) && (!fresh.contains(id) || price_stale.contains(id)))
+            .filter(|id| stored.contains(id) && due.contains(id))
             .collect();
 
         Ok(state.game_refresh.enqueue(&stale))
@@ -272,18 +297,11 @@ impl GameCache {
             return Ok(());
         }
 
-        let cached =
-            Self::get_cached_appids(&state.db, appids, state.config.game_cache_ttl_days).await?;
-        let price_stale = Self::get_price_stale_appids(
-            &state.db,
-            appids,
-            state.config.price_cache_ttl_hours,
-        )
-        .await?;
+        let due = Self::get_due_appids(state, appids).await?;
         let needs_fetch: Vec<u32> = appids
             .iter()
             .copied()
-            .filter(|id| !cached.contains(id) || price_stale.contains(id))
+            .filter(|id| due.contains(id))
             .collect();
 
         let total = needs_fetch.len() as i64;
@@ -1110,7 +1128,7 @@ mod tests {
         insert_price_stale_row(&state.db, STALE, STALE_RAW_JSON).await;
         let steam = FakeSteam::new().with_store_item(STALE, "New name");
 
-        GameCache::ensure_cached_from(&state, &steam, &[STALE])
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[STALE])
             .await
             .unwrap();
 
@@ -1128,7 +1146,7 @@ mod tests {
         let state = test_state(test_db().await);
         let steam = FakeSteam::new().with_store_item(UNCACHED, "Uncached");
 
-        GameCache::ensure_cached_from(&state, &steam, &[UNCACHED])
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[UNCACHED])
             .await
             .unwrap();
 
@@ -1162,7 +1180,7 @@ mod tests {
         let state = test_state(test_db().await);
         insert_price_stale_row(&state.db, STALE, STALE_RAW_JSON).await;
         let steam = FakeSteam::new().with_store_item(STALE, "New name");
-        GameCache::ensure_cached_from(&state, &steam, &[STALE])
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[STALE])
             .await
             .unwrap();
 
@@ -1188,7 +1206,7 @@ mod tests {
         let steam = FakeSteam::new()
             .with_store_item(STALE, "New name")
             .with_store_item(STALE_LATER, "Later");
-        GameCache::ensure_cached_from(&state, &steam, &[STALE])
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[STALE])
             .await
             .unwrap();
         GameCache::refresh_queued(&state, &steam).await;
