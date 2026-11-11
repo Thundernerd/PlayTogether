@@ -24,10 +24,14 @@
   --border: var(--ink);
   --text: var(--ink);
   --muted: #655441;
+  /* Darker than the prototype's #85735f so placeholders clear 4.5:1 on white
+     with margin (5.3:1). */
   --placeholder: #7a6853;
   --accent: #a8361a;
   --accent-2: #3d6628;
   --danger: #9e2218;
+  /* A deep amber rather than a bright yellow, so warning text reads at 6:1+
+     on the cream and tinted surfaces. */
   --warning: #7d5200;
   --highlight: #f2c14e;
   --highlight-tint: #fff4d6;
@@ -51,6 +55,7 @@
   /* Accent, not --highlight: yellow on cream is 1.6:1, under the 3:1 a focus
      indicator needs. */
   --focus-ring: var(--accent);
+  --focus-outline: var(--focus-outline);
   --selected-bg: var(--ink);
   --selected-text: var(--surface);
 
@@ -67,11 +72,12 @@
   /* Ratings */
   --rating-average-text: var(--warning);
   --rating-filled: var(--accent);
+  /* Darker than the prototype's #9c8a70: 3.9:1 instead of 3.2:1 on --surface,
+     comfortably over the 3:1 icons need. */
   --rating-empty: #8f7c62;
 
   /* Overlays */
   --overlay-bg: rgba(43, 33, 24, 0.6);
-  --floating-bg: var(--surface);
 
   /* Hard offset shadows */
   --shadow-sm: 2px 2px 0 var(--ink);
@@ -104,7 +110,7 @@
 
 ::selection {
   background: var(--highlight);
-  color: var(--ink);
+  color: var(--text);
 }
 
 body {
@@ -161,7 +167,7 @@ input[type='checkbox'] {
 }
 
 .brand {
-  color: var(--ink);
+  color: var(--text);
   font-size: 1.5rem;
   text-decoration: none;
 }
@@ -189,7 +195,7 @@ input[type='checkbox'] {
   appearance: none;
   border: var(--line);
   background: var(--surface);
-  color: var(--ink);
+  color: var(--text);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-btn);
   padding: 0.625rem 1rem;
@@ -210,7 +216,7 @@ input[type='checkbox'] {
 }
 
 .btn:focus-visible {
-  outline: 3px solid var(--focus-ring);
+  outline: var(--focus-outline);
   outline-offset: 2px;
 }
 
@@ -228,7 +234,7 @@ input[type='checkbox'] {
   width: 100%;
   border: var(--line);
   background: var(--surface-bright);
-  color: var(--ink);
+  color: var(--text);
   border-radius: var(--radius-sm);
   padding: 0.625rem 0.75rem;
   font: inherit;
@@ -239,7 +245,7 @@ input[type='checkbox'] {
 }
 
 .input:focus {
-  outline: 3px solid var(--focus-ring);
+  outline: var(--focus-outline);
   outline-offset: 1px;
 }
 

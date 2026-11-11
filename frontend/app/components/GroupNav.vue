@@ -74,7 +74,7 @@ function isActive(link: { to: string; exact?: boolean }) {
   border-radius: var(--radius-sm);
   border: var(--line);
   background: var(--surface);
-  color: var(--ink);
+  color: var(--text);
   font-size: 0.875rem;
   font-weight: 700;
   text-decoration: none;
@@ -91,7 +91,7 @@ function isActive(link: { to: string; exact?: boolean }) {
 }
 
 .nav-link:focus-visible {
-  outline: 3px solid var(--focus-ring);
+  outline: var(--focus-outline);
   outline-offset: 2px;
 }
 
@@ -105,7 +105,7 @@ function isActive(link: { to: string; exact?: boolean }) {
   padding: 0.05rem 0.4rem;
   border-radius: var(--radius-pill);
   background: var(--surface-2);
-  color: var(--ink);
+  color: var(--text);
 }
 
 .nav-link.active .count {

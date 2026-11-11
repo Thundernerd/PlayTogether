@@ -137,7 +137,7 @@ watch(
 }
 
 .quick-link:focus-visible {
-  outline: 3px solid var(--focus-ring);
+  outline: var(--focus-outline);
   outline-offset: 2px;
 }
 

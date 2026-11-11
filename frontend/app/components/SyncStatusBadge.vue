@@ -51,7 +51,7 @@ const tone = computed(() => {
   font-weight: 700;
   border: var(--line);
   background: var(--surface);
-  color: var(--ink);
+  color: var(--text);
   max-width: 100%;
   word-break: break-word;
 }

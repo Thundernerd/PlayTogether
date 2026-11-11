@@ -37,6 +37,5 @@ onUnmounted(() => {
   right: 1.25rem;
   bottom: 1.25rem;
   z-index: 50;
-  background: var(--floating-bg);
 }
 </style>

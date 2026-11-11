@@ -137,7 +137,7 @@ const showImagePlaceholder = computed(
 }
 
 .game-card.clickable:focus-visible {
-  outline: 3px solid var(--focus-ring);
+  outline: var(--focus-outline);
   outline-offset: 3px;
 }
 
