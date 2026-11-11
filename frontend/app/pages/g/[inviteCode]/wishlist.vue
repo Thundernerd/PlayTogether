@@ -28,7 +28,7 @@ const playTogetherFilter = ref<PlayTogetherFilter>('all')
 const wishlistSort = ref<WishlistSort>('date_desc')
 
 const status = computed(() =>
-  memberListStatus({
+  listStatus({
     itemCount: myWishlist.value?.items.length ?? 0,
     loaded: !!myWishlist.value,
     loading: wishlistsLoading.value,

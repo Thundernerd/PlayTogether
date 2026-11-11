@@ -9,7 +9,7 @@ const { open: openGameDetail } = useGameDetail()
 
 // No sync behind this list, and every load without items shows 'loading'.
 const status = computed(() =>
-  memberListStatus({
+  listStatus({
     itemCount: sharedGames.value.length,
     loading: sharedLoading.value,
     error: sharedError.value,

@@ -33,7 +33,7 @@ const playTogetherFilter = ref<PlayTogetherFilter>('all')
 const librarySort = ref<LibrarySort>('playtime_desc')
 
 const status = computed(() =>
-  memberListStatus({
+  listStatus({
     itemCount: myLibrary.value?.items.length ?? 0,
     loaded: !!myLibrary.value,
     loading: librariesLoading.value,

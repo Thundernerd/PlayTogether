@@ -5,11 +5,12 @@ import type { SyncJobStatus } from '~/types/api'
 // during a sync keep the 'syncing' text instead of swapping it for a spinner.
 export type ListStatus = 'items' | 'loading' | 'failed' | 'syncing' | 'empty' | 'not-synced'
 
-export function memberListStatus(list: {
+export function listStatus(list: {
   itemCount: number
   /**
-   * Whether a load has returned the member's entry yet; once it has, a reload keeps the
-   * current status instead of showing 'loading'. Left out, every load shows 'loading'.
+   * Whether a load has returned the list yet (for a member's own list, their entry in it);
+   * once it has, a reload keeps the current status instead of showing 'loading'. Left out,
+   * every load shows 'loading'.
    */
   loaded?: boolean
   loading: boolean
