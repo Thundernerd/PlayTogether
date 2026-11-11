@@ -243,13 +243,12 @@ impl GameCache {
     /// The background refresh: refetches queued apps from Steam until the
     /// queue is empty. `fetch_missing` skips apps refreshed in the meantime.
     async fn refresh_queued(state: &AppState, client: &impl SteamStore) {
-        let mut worker = state.game_refresh.worker_guard();
+        let mut worker = state.game_refresh.start_worker();
         while let Some(batch) = worker.next_batch() {
             info!(count = batch.len(), "refreshing stale game cache rows in the background");
             if let Err(error) = Self::fetch_missing(state, client, &batch, |_, _| async {}).await {
                 warn!(%error, "background game cache refresh failed; rows stay due for refresh");
             }
-            state.game_refresh.finish(&batch);
         }
     }
 
