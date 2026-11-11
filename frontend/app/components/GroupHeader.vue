@@ -93,8 +93,8 @@ const emit = defineEmits<{
 }
 
 .btn-danger {
-  border-color: rgba(248, 113, 113, 0.5);
-  color: #fca5a5;
+  border-color: var(--danger-border);
+  color: var(--danger-text);
   white-space: nowrap;
 }
 
@@ -106,7 +106,7 @@ const emit = defineEmits<{
 }
 
 .btn-danger:hover:not(:disabled) {
-  border-color: #f87171;
-  background: rgba(248, 113, 113, 0.1);
+  border-color: var(--danger);
+  background: var(--danger-tint);
 }
 </style>

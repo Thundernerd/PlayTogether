@@ -46,7 +46,7 @@ const tone = computed(() => {
   display: inline-flex;
   align-items: center;
   padding: 0.2rem 0.55rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.75rem;
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -55,18 +55,18 @@ const tone = computed(() => {
 }
 
 .running {
-  border-color: rgba(56, 189, 248, 0.5);
-  color: #7dd3fc;
+  border-color: var(--accent-border);
+  color: var(--accent-text);
 }
 
 .complete {
-  border-color: rgba(34, 197, 94, 0.5);
-  color: #86efac;
+  border-color: var(--success-border);
+  color: var(--success-text);
 }
 
 .error {
-  border-color: rgba(248, 113, 113, 0.5);
-  color: #fca5a5;
+  border-color: var(--danger-border);
+  color: var(--danger-text);
 }
 
 .idle {

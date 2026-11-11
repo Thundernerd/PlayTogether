@@ -36,7 +36,7 @@ defineProps<{
   align-items: flex-start;
   padding: 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--bg);
 }
 

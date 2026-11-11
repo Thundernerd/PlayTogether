@@ -128,7 +128,7 @@ function setStars(value: number) {
   width: 100%;
   aspect-ratio: 460 / 215;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
 }
 
@@ -167,6 +167,8 @@ function setStars(value: number) {
 .title-button h3 {
   margin: 0;
   font-size: 1.0625rem;
+  /* Keeps the button's user-agent font, as before --font-heading; see #5. */
+  font-family: inherit;
 }
 
 .title-button:hover h3,
@@ -188,7 +190,7 @@ function setStars(value: number) {
 }
 
 .avg {
-  color: #fde68a;
+  color: var(--rating-average-text);
 }
 
 .desc,
@@ -208,7 +210,7 @@ function setStars(value: number) {
 .tag {
   font-size: 0.6875rem;
   padding: 0.15rem 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-2);
   border: 1px solid var(--border);
 }
@@ -246,14 +248,14 @@ function setStars(value: number) {
 .star {
   border: none;
   background: transparent;
-  color: #64748b;
+  color: var(--rating-empty);
   font-size: 1.125rem;
   cursor: pointer;
   padding: 0 0.1rem;
 }
 
 .star.filled {
-  color: #fbbf24;
+  color: var(--rating-filled);
 }
 
 .star:disabled,
