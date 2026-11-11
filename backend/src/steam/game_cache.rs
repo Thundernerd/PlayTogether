@@ -21,6 +21,14 @@ use crate::steam::media_urls::{
 
 pub struct GameCache;
 
+/// Which `steam_games` rows to match by `fetched_at`.
+#[derive(Clone, Copy)]
+enum FetchedAt {
+    Any,
+    After(DateTime<Utc>),
+    AtOrBefore(DateTime<Utc>),
+}
+
 impl GameCache {
     pub async fn get_cached_appids(
         db: &SqlitePool,
@@ -28,7 +36,7 @@ impl GameCache {
         ttl_days: i64,
     ) -> AppResult<HashSet<u32>> {
         let cutoff = Utc::now() - Duration::days(ttl_days);
-        Self::appids_by_fetched_at(db, appids, "fetched_at > ?", cutoff).await
+        Self::appids_by_fetched_at(db, appids, FetchedAt::After(cutoff)).await
     }
 
     pub async fn get_price_stale_appids(
@@ -37,32 +45,66 @@ impl GameCache {
         ttl_hours: i64,
     ) -> AppResult<HashSet<u32>> {
         let cutoff = Utc::now() - Duration::hours(ttl_hours);
-        Self::appids_by_fetched_at(db, appids, "fetched_at <= ?", cutoff).await
+        Self::appids_by_fetched_at(db, appids, FetchedAt::AtOrBefore(cutoff)).await
     }
 
-    /// The `appids` with a `steam_games` row whose `fetched_at` matches
-    /// `fetched_at_condition` (one `?`, bound to `cutoff`).
+    /// The `appids` with a `steam_games` row, however old.
+    async fn get_stored_appids(db: &SqlitePool, appids: &[u32]) -> AppResult<HashSet<u32>> {
+        Self::appids_by_fetched_at(db, appids, FetchedAt::Any).await
+    }
+
+    /// The `appids` that are due for a fetch from Steam: no row, or a row past
+    /// the game or the price TTL.
+    async fn get_due_appids(state: &AppState, appids: &[u32]) -> AppResult<HashSet<u32>> {
+        let cached =
+            Self::get_cached_appids(&state.db, appids, state.config.game_cache_ttl_days).await?;
+        let price_stale = Self::get_price_stale_appids(
+            &state.db,
+            appids,
+            state.config.price_cache_ttl_hours,
+        )
+        .await?;
+        Ok(appids
+            .iter()
+            .copied()
+            .filter(|id| !cached.contains(id) || price_stale.contains(id))
+            .collect())
+    }
+
+    /// The `appids` with a `steam_games` row whose `fetched_at` matches.
     async fn appids_by_fetched_at(
         db: &SqlitePool,
         appids: &[u32],
-        fetched_at_condition: &str,
-        cutoff: DateTime<Utc>,
+        fetched_at: FetchedAt,
     ) -> AppResult<HashSet<u32>> {
         if appids.is_empty() {
             return Ok(HashSet::new());
         }
 
         let placeholders: Vec<String> = appids.iter().map(|_| "?".to_string()).collect();
-        let query = format!(
-            "SELECT appid FROM steam_games WHERE appid IN ({}) AND {fetched_at_condition}",
+        let mut query = format!(
+            "SELECT appid FROM steam_games WHERE appid IN ({})",
             placeholders.join(", ")
         );
+        let cutoff = match fetched_at {
+            FetchedAt::Any => None,
+            FetchedAt::After(cutoff) => {
+                query.push_str(" AND fetched_at > ?");
+                Some(cutoff)
+            }
+            FetchedAt::AtOrBefore(cutoff) => {
+                query.push_str(" AND fetched_at <= ?");
+                Some(cutoff)
+            }
+        };
 
         let mut q = sqlx::query_scalar::<_, i64>(&query);
         for appid in appids {
             q = q.bind(*appid as i64);
         }
-        q = q.bind(cutoff.to_rfc3339());
+        if let Some(cutoff) = cutoff {
+            q = q.bind(cutoff.to_rfc3339());
+        }
 
         let rows = q.fetch_all(db).await?;
         Ok(rows.into_iter().map(|id| id as u32).collect())
@@ -191,7 +233,52 @@ impl GameCache {
 
     pub async fn ensure_cached(state: &AppState, appids: &[u32]) -> AppResult<()> {
         let client = SteamClient::new(state.http.clone());
-        Self::fetch_missing(state, &client, appids, |_, _| async {}).await
+        if Self::ensure_cached_from(state, &client, appids).await? {
+            let state = state.clone();
+            tokio::spawn(async move { Self::refresh_queued(&state, &client).await });
+        }
+        Ok(())
+    }
+
+    /// The background refresh: refetches queued apps from Steam until the
+    /// queue is empty. `fetch_missing` skips apps refreshed in the meantime.
+    async fn refresh_queued(state: &AppState, client: &impl SteamStore) {
+        let mut worker = state.game_refresh.start_worker();
+        while let Some(batch) = worker.next_batch() {
+            info!(count = batch.len(), "refreshing stale game cache rows in the background");
+            if let Err(error) = Self::fetch_missing(state, client, &batch, |_, _| async {}).await {
+                warn!(%error, "background game cache refresh failed; rows stay due for refresh");
+            }
+        }
+    }
+
+    /// Fetches the `appids` with no cached row and waits for them. Apps whose
+    /// row is past a TTL are served as cached and queued for the background
+    /// refresh. Returns true when the caller must start the refresh worker.
+    #[must_use = "when true, the caller must start the refresh worker"]
+    async fn ensure_cached_from(
+        state: &AppState,
+        client: &impl SteamStore,
+        appids: &[u32],
+    ) -> AppResult<bool> {
+        let stored = Self::get_stored_appids(&state.db, appids).await?;
+        let missing: Vec<u32> = appids
+            .iter()
+            .copied()
+            .filter(|id| !stored.contains(id))
+            .collect();
+        if !missing.is_empty() {
+            Self::fetch_missing(state, client, &missing, |_, _| async {}).await?;
+        }
+
+        let due = Self::get_due_appids(state, appids).await?;
+        let stale: Vec<u32> = appids
+            .iter()
+            .copied()
+            .filter(|id| stored.contains(id) && due.contains(id))
+            .collect();
+
+        Ok(state.game_refresh.enqueue(&stale))
     }
 
     pub async fn fetch_missing<F, Fut>(
@@ -209,18 +296,11 @@ impl GameCache {
             return Ok(());
         }
 
-        let cached =
-            Self::get_cached_appids(&state.db, appids, state.config.game_cache_ttl_days).await?;
-        let price_stale = Self::get_price_stale_appids(
-            &state.db,
-            appids,
-            state.config.price_cache_ttl_hours,
-        )
-        .await?;
+        let due = Self::get_due_appids(state, appids).await?;
         let needs_fetch: Vec<u32> = appids
             .iter()
             .copied()
-            .filter(|id| !cached.contains(id) || price_stale.contains(id))
+            .filter(|id| due.contains(id))
             .collect();
 
         let total = needs_fetch.len() as i64;
@@ -697,6 +777,7 @@ mod tests {
 
     use crate::config::Config;
     use crate::jobs::registry::SyncJobRegistry;
+    use crate::steam::GameRefreshQueue;
     use crate::steam::store::fake::FakeSteam;
 
     const PRICE_TTL_HOURS: i64 = 24;
@@ -732,6 +813,7 @@ mod tests {
             http: reqwest::Client::new(),
             tags: Arc::new(RwLock::new(HashMap::new())),
             sync_jobs: Arc::new(SyncJobRegistry::new()),
+            game_refresh: Arc::new(GameRefreshQueue::new()),
             config: Config {
                 database_url: "sqlite::memory:".into(),
                 bind_addr: "127.0.0.1:0".into(),
@@ -1023,5 +1105,142 @@ mod tests {
             stored_name(&state.db, LISTED).await.as_deref(),
             Some("Listed")
         );
+    }
+
+    const STALE: u32 = 3001;
+    const STALE_RAW_JSON: &str = r#"{"appid":3001,"name":"Old name"}"#;
+
+    async fn insert_price_stale_row(db: &SqlitePool, appid: u32, raw_json: &str) {
+        insert_game(
+            db,
+            appid,
+            raw_json,
+            Some(true),
+            Utc::now() - Duration::hours(PRICE_TTL_HOURS + 1),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn ensure_cached_serves_a_price_stale_row_as_is_and_queues_it_for_refresh() {
+        let state = test_state(test_db().await);
+        insert_price_stale_row(&state.db, STALE, STALE_RAW_JSON).await;
+        let steam = FakeSteam::new().with_store_item(STALE, "New name");
+
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[STALE])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            stored_raw_json(&state.db, STALE).await.as_deref(),
+            Some(STALE_RAW_JSON)
+        );
+        assert_eq!(state.game_refresh.queued(), vec![STALE]);
+    }
+
+    const UNCACHED: u32 = 3002;
+
+    #[tokio::test]
+    async fn ensure_cached_waits_for_an_app_with_no_row_and_queues_nothing() {
+        let state = test_state(test_db().await);
+        let steam = FakeSteam::new().with_store_item(UNCACHED, "Uncached");
+
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[UNCACHED])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            stored_name(&state.db, UNCACHED).await.as_deref(),
+            Some("Uncached")
+        );
+        assert_eq!(state.game_refresh.queued(), Vec::<u32>::new());
+    }
+
+    #[tokio::test]
+    async fn a_stale_app_already_queued_is_not_queued_again_or_given_a_second_worker() {
+        let state = test_state(test_db().await);
+        insert_price_stale_row(&state.db, STALE, STALE_RAW_JSON).await;
+        let steam = FakeSteam::new().with_store_item(STALE, "New name");
+
+        let first = GameCache::ensure_cached_from(&state, &steam, &[STALE])
+            .await
+            .unwrap();
+        let second = GameCache::ensure_cached_from(&state, &steam, &[STALE])
+            .await
+            .unwrap();
+
+        assert!(first, "the first call starts the refresh worker");
+        assert!(!second, "the second call leaves it to the running worker");
+        assert_eq!(state.game_refresh.queued(), vec![STALE]);
+    }
+
+    #[tokio::test]
+    async fn the_background_refresh_refetches_queued_apps_and_empties_the_queue() {
+        let state = test_state(test_db().await);
+        insert_price_stale_row(&state.db, STALE, STALE_RAW_JSON).await;
+        let steam = FakeSteam::new().with_store_item(STALE, "New name");
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[STALE])
+            .await
+            .unwrap();
+
+        GameCache::refresh_queued(&state, &steam).await;
+
+        assert_eq!(
+            stored_name(&state.db, STALE).await.as_deref(),
+            Some("New name")
+        );
+        assert_eq!(state.game_refresh.queued(), Vec::<u32>::new());
+        let stale = GameCache::get_price_stale_appids(&state.db, &[STALE], PRICE_TTL_HOURS)
+            .await
+            .unwrap();
+        assert_eq!(stale, HashSet::new());
+    }
+
+    const STALE_LATER: u32 = 3003;
+
+    #[tokio::test]
+    async fn a_stale_app_queued_after_the_worker_drained_the_queue_starts_a_new_worker() {
+        let state = test_state(test_db().await);
+        insert_price_stale_row(&state.db, STALE, STALE_RAW_JSON).await;
+        let steam = FakeSteam::new()
+            .with_store_item(STALE, "New name")
+            .with_store_item(STALE_LATER, "Later");
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[STALE])
+            .await
+            .unwrap();
+        GameCache::refresh_queued(&state, &steam).await;
+        insert_price_stale_row(&state.db, STALE_LATER, r#"{"appid":3003,"name":"Old"}"#).await;
+
+        let starts_worker = GameCache::ensure_cached_from(&state, &steam, &[STALE, STALE_LATER])
+            .await
+            .unwrap();
+
+        assert!(starts_worker);
+        assert_eq!(state.game_refresh.queued(), vec![STALE_LATER]);
+    }
+
+    #[tokio::test]
+    async fn ensure_cached_serves_a_row_past_only_the_game_ttl_as_is_and_queues_it_for_refresh() {
+        let mut state = test_state(test_db().await);
+        state.config.price_cache_ttl_hours = (GAME_TTL_DAYS + 30) * 24;
+        insert_game(
+            &state.db,
+            STALE,
+            STALE_RAW_JSON,
+            Some(true),
+            Utc::now() - Duration::days(GAME_TTL_DAYS + 1),
+        )
+        .await;
+        let steam = FakeSteam::new().with_store_item(STALE, "New name");
+
+        let _ = GameCache::ensure_cached_from(&state, &steam, &[STALE])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            stored_raw_json(&state.db, STALE).await.as_deref(),
+            Some(STALE_RAW_JSON)
+        );
+        assert_eq!(state.game_refresh.queued(), vec![STALE]);
     }
 }
