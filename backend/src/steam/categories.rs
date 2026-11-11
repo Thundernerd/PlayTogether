@@ -25,13 +25,6 @@ pub fn play_modes_from_ids(ids: &[u32]) -> GamePlayModes {
     }
 }
 
-pub fn store_item_has_categories(item: &StoreItem) -> bool {
-    item.categories
-        .as_ref()
-        .and_then(|categories| categories.supported_player_categoryids.as_ref())
-        .is_some()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
