@@ -139,7 +139,7 @@ async fn run_sync(state: &AppState, member_id: Uuid, steam_id: u64) -> AppResult
     )
     .await?;
 
-    GameCache::fetch_missing(state, &appids, |done, total| {
+    GameCache::fetch_missing(state, &client, &appids, |done, total| {
         let db = state.db.clone();
         async move {
             if !db::member_exists(&db, member_id).await.unwrap_or(false) {
