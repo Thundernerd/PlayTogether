@@ -48,5 +48,6 @@ const hasDiscount = computed(
   border-radius: var(--radius-xs);
   background: var(--discount-bg);
   color: var(--discount-text);
+  transform: rotate(-3deg);
 }
 </style>

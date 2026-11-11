@@ -117,21 +117,34 @@ const showImagePlaceholder = computed(
 
 <style scoped>
 .game-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border: var(--line);
+  border-radius: var(--radius-sm);
   overflow: hidden;
-  background: var(--bg);
+  background: var(--surface-bright);
+  box-shadow: var(--shadow-tile);
   display: flex;
   flex-direction: column;
+  transition: transform 0.12s, box-shadow 0.12s;
 }
 
 .game-card.clickable {
   cursor: pointer;
 }
 
+.game-card.clickable:hover {
+  transform: translate(-2px, -2px) rotate(-0.4deg);
+  box-shadow: var(--shadow-tile-hover);
+}
+
 .game-card.clickable:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: var(--focus-outline);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-card {
+    transition: none;
+  }
 }
 
 .cover {
@@ -139,13 +152,14 @@ const showImagePlaceholder = computed(
   aspect-ratio: 460 / 215;
   object-fit: cover;
   background: var(--surface-2);
+  border-bottom: var(--line);
 }
 
 .cover-placeholder {
   background: linear-gradient(
     110deg,
     var(--surface-2) 8%,
-    var(--border) 18%,
+    var(--surface) 18%,
     var(--surface-2) 33%
   );
   background-size: 200% 100%;
@@ -168,13 +182,14 @@ const showImagePlaceholder = computed(
 
 .title {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.125rem;
 }
 
 .subtitle {
   margin: 0;
   font-size: 0.8125rem;
   color: var(--muted);
+  font-style: italic;
 }
 
 .desc {
@@ -201,10 +216,6 @@ const showImagePlaceholder = computed(
 .tag {
   font-size: 0.6875rem;
   padding: 0.15rem 0.45rem;
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
 }
 
 .checkbox-row {
