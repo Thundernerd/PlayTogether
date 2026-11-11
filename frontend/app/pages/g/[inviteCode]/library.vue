@@ -11,6 +11,9 @@ type LibrarySort =
   | 'name_asc'
   | 'name_desc'
 
+// This page shows its own failed state, so the layout skips the raw list error line.
+definePageMeta({ showsListErrors: true })
+
 const group = useGroup()
 const {
   myLibrary,

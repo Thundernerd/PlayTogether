@@ -6,6 +6,9 @@ type WishlistFilter = 'all' | 'selected' | 'unselected'
 type ReleaseFilter = 'all' | 'released' | 'unreleased' | 'unknown'
 type WishlistSort = 'name_asc' | 'name_desc' | 'date_desc' | 'date_asc'
 
+// This page shows its own failed state, so the layout skips the raw list error line.
+definePageMeta({ showsListErrors: true })
+
 const group = useGroup()
 const {
   myWishlist,
