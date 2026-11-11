@@ -230,7 +230,7 @@ impl GameCache {
         let mut still_missing = Vec::new();
 
         for chunk in needs_fetch.chunks(chunk_size) {
-            let items = client.fetch_store_items(chunk).await?;
+            let items = requested_items(client.fetch_store_items(chunk).await?, chunk);
             let returned: HashSet<u32> = items.iter().map(|i| i.appid).collect();
             Self::upsert_items(state, &items).await?;
 
@@ -250,7 +250,7 @@ impl GameCache {
 
         let mut after_individual = Vec::new();
         for appid in still_missing {
-            let items = client.fetch_store_items(&[appid]).await?;
+            let items = requested_items(client.fetch_store_items(&[appid]).await?, &[appid]);
             if items.is_empty() {
                 after_individual.push(appid);
             } else {
@@ -584,6 +584,17 @@ pub async fn load_games_map(
         }
     }
     Ok(map)
+}
+
+/// Steam answers for delisted or hidden apps with an item whose `appid` is 0
+/// (`success: 15`); keep only items for the appids we asked for, so those apps
+/// fall through to the app-details / unavailable path instead of being
+/// stored under appid 0 while their own row is never refreshed.
+fn requested_items(items: Vec<StoreItem>, requested: &[u32]) -> Vec<StoreItem> {
+    items
+        .into_iter()
+        .filter(|item| requested.contains(&item.appid))
+        .collect()
 }
 
 use sqlx::Row;
