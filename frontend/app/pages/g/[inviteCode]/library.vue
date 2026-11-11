@@ -12,7 +12,7 @@ type LibrarySort =
   | 'name_desc'
 
 const group = useGroup()
-const { myLibrary, syncComplete, actionLoading, toggleSelection } = group
+const { myLibrary, librarySyncComplete, librariesLoading, actionLoading, toggleSelection } = group
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
 
@@ -151,9 +151,9 @@ onUnmounted(stopPolling)
             :game="item.game"
             :subtitle="playtimeSubtitle(item)"
             :wants-to-play="item.wants_to_play"
-            :loading="!syncComplete && !item.game"
+            :loading="!librarySyncComplete && !item.game"
             show-checkbox
-            :disabled="!syncComplete || actionLoading"
+            :disabled="!librarySyncComplete || actionLoading"
             @toggle="toggleSelection(item.appid, $event)"
             @open="openGameDetail(item.appid)"
           />
@@ -161,7 +161,8 @@ onUnmounted(stopPolling)
         <p v-else class="muted">No games match your search or filters.</p>
       </template>
 
-      <p v-else-if="syncComplete" class="muted">Your library is empty.</p>
+      <LoadingMessage v-else-if="librariesLoading">Loading your library…</LoadingMessage>
+      <p v-else-if="librarySyncComplete" class="muted">Your library is empty.</p>
       <p v-else class="muted">Sync your Steam data from the overview page first.</p>
     </section>
 

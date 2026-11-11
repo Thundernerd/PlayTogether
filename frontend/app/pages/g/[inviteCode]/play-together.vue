@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const group = useGroup()
-const { sharedGames, actionLoading, vote, rate, groupBasePath } = group
+const { sharedGames, sharedLoading, actionLoading, vote, rate, groupBasePath } = group
 const { open: openGameDetail } = useGameDetail()
 </script>
 
@@ -23,6 +23,7 @@ const { open: openGameDetail } = useGameDetail()
           @open="openGameDetail(game.appid)"
         />
       </div>
+      <LoadingMessage v-else-if="sharedLoading">Loading shared games…</LoadingMessage>
       <p v-else class="muted">
         No games selected yet. Mark games on
         <NuxtLink :to="`${groupBasePath}/library`">your library</NuxtLink>
