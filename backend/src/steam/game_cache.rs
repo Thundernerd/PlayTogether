@@ -1136,6 +1136,16 @@ mod tests {
         .await;
     }
 
+    /// Moves an existing row's `fetched_at` back past the price TTL.
+    async fn make_price_stale(db: &SqlitePool, appid: u32) {
+        sqlx::query("UPDATE steam_games SET fetched_at = ? WHERE appid = ?")
+            .bind((Utc::now() - Duration::hours(PRICE_TTL_HOURS + 1)).to_rfc3339())
+            .bind(appid as i64)
+            .execute(db)
+            .await
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn ensure_cached_serves_a_price_stale_row_as_is_and_queues_it_for_refresh() {
         let state = test_state(test_db().await);
@@ -1317,12 +1327,7 @@ mod tests {
             Some("New name")
         );
 
-        sqlx::query("UPDATE steam_games SET fetched_at = ? WHERE appid = ?")
-            .bind((Utc::now() - Duration::hours(PRICE_TTL_HOURS + 1)).to_rfc3339())
-            .bind(STALE as i64)
-            .execute(&state.db)
-            .await
-            .unwrap();
+        make_price_stale(&state.db, STALE).await;
         let starts_worker = GameCache::ensure_cached_from(&state, &steam, &[FAILING, STALE])
             .await
             .unwrap();

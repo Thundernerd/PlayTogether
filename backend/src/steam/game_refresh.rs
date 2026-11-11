@@ -159,22 +159,35 @@ impl Drop for RefreshWorker<'_> {
     }
 }
 
-/// A clock that only moves when a test advances it.
 #[cfg(test)]
-#[derive(Clone)]
-pub struct ManualClock(std::sync::Arc<Mutex<Instant>>);
+pub use manual_clock::ManualClock;
 
 #[cfg(test)]
-impl ManualClock {
-    pub fn new() -> Self {
-        Self(std::sync::Arc::new(Mutex::new(Instant::now())))
+mod manual_clock {
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    /// A clock that only moves when a test advances it.
+    #[derive(Clone)]
+    pub struct ManualClock(Arc<Mutex<Instant>>);
+
+    impl Default for ManualClock {
+        fn default() -> Self {
+            Self(Arc::new(Mutex::new(Instant::now())))
+        }
     }
 
-    pub fn now(&self) -> Instant {
-        *self.0.lock().unwrap()
-    }
+    impl ManualClock {
+        pub fn new() -> Self {
+            Self::default()
+        }
 
-    pub fn advance(&self, by: Duration) {
-        *self.0.lock().unwrap() += by;
+        pub fn now(&self) -> Instant {
+            *self.0.lock().unwrap()
+        }
+
+        pub fn advance(&self, by: Duration) {
+            *self.0.lock().unwrap() += by;
+        }
     }
 }
