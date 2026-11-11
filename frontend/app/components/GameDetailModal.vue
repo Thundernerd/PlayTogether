@@ -227,7 +227,7 @@ onUnmounted(() => {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(2, 6, 23, 0.78);
+  background: var(--overlay-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -239,10 +239,10 @@ onUnmounted(() => {
   width: min(920px, 100%);
   max-height: min(90vh, 960px);
   overflow: auto;
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   border: 1px solid var(--border);
   background: var(--surface);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-modal);
 }
 
 .close-btn {
@@ -253,9 +253,9 @@ onUnmounted(() => {
   z-index: 2;
   width: 2rem;
   height: 2rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--border);
-  background: rgba(15, 20, 25, 0.85);
+  background: var(--overlay-control-bg);
   color: var(--text);
   font-size: 1.25rem;
   line-height: 1;
@@ -263,12 +263,12 @@ onUnmounted(() => {
 }
 
 .media-carousel {
-  background: #000;
+  background: var(--media-letterbox);
 }
 
 .media-stage {
   width: 100%;
-  background: #000;
+  background: var(--media-letterbox);
 }
 
 .media-main {
@@ -276,7 +276,7 @@ onUnmounted(() => {
   width: 100%;
   aspect-ratio: 460 / 215;
   object-fit: contain;
-  background: #000;
+  background: var(--media-letterbox);
 }
 
 .media-thumbs {
@@ -294,7 +294,7 @@ onUnmounted(() => {
   width: 112px;
   height: 63px;
   padding: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 2px solid transparent;
   background: transparent;
   cursor: pointer;
@@ -317,8 +317,8 @@ onUnmounted(() => {
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(0, 0, 0, 0.35);
-  color: #fff;
+  background: var(--media-scrim);
+  color: var(--on-media);
   font-size: 1.25rem;
   pointer-events: none;
 }
@@ -359,7 +359,7 @@ onUnmounted(() => {
   display: inline-block;
   font-size: 0.75rem;
   padding: 0.15rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--muted);
@@ -375,7 +375,7 @@ onUnmounted(() => {
 .tag {
   font-size: 0.75rem;
   padding: 0.2rem 0.55rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-2);
   border: 1px solid var(--border);
 }
@@ -414,7 +414,7 @@ onUnmounted(() => {
 
 .description :deep(img) {
   max-width: 100%;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .modal-state {

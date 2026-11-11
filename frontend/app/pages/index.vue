@@ -132,7 +132,7 @@ async function joinGroup() {
 }
 
 .error {
-  color: #fca5a5;
+  color: var(--danger-text);
   margin: 0;
 }
 </style>

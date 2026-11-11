@@ -71,7 +71,7 @@ function isActive(link: { to: string; exact?: boolean }) {
   align-items: center;
   gap: 0.4rem;
   padding: 0.45rem 0.85rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--muted);
@@ -86,9 +86,9 @@ function isActive(link: { to: string; exact?: boolean }) {
 }
 
 .nav-link.active {
-  border-color: rgba(56, 189, 248, 0.55);
-  background: rgba(56, 189, 248, 0.12);
-  color: #e0f2fe;
+  border-color: var(--active-border);
+  background: var(--active-bg);
+  color: var(--active-text);
 }
 
 .count {
@@ -99,7 +99,7 @@ function isActive(link: { to: string; exact?: boolean }) {
   min-height: 1.1rem;
   font-size: 0.75rem;
   padding: 0.05rem 0.4rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-2);
   color: var(--text);
 }

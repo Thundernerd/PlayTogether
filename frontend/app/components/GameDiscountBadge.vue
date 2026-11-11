@@ -45,8 +45,8 @@ const hasDiscount = computed(
   font-size: 0.6875rem;
   font-weight: 700;
   padding: 0.1rem 0.4rem;
-  border-radius: 4px;
-  background: #166534;
-  color: #dcfce7;
+  border-radius: var(--radius-xs);
+  background: var(--discount-bg);
+  color: var(--discount-text);
 }
 </style>

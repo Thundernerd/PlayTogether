@@ -118,7 +118,7 @@ const showImagePlaceholder = computed(
 <style scoped>
 .game-card {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--bg);
   display: flex;
@@ -174,7 +174,7 @@ const showImagePlaceholder = computed(
 .subtitle {
   margin: 0;
   font-size: 0.8125rem;
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .desc {
@@ -201,10 +201,10 @@ const showImagePlaceholder = computed(
 .tag {
   font-size: 0.6875rem;
   padding: 0.15rem 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-2);
   border: 1px solid var(--border);
-  color: #cbd5e1;
+  color: var(--text-secondary);
 }
 
 .checkbox-row {
