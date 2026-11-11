@@ -70,6 +70,11 @@ export function useGroup() {
     () => !!me.value && myWishlist.value?.member.sync_status.status === 'complete',
   )
 
+  // Same sync job as syncComplete, read from /libraries so the library page needn't wait on /wishlists.
+  const librarySyncComplete = computed(
+    () => myLibrary.value?.member.sync_status.status === 'complete',
+  )
+
   const anyMemberSyncing = computed(
     () => groupDetail.value?.members.some((m) => m.sync_status.status === 'running') ?? false,
   )
@@ -307,6 +312,7 @@ export function useGroup() {
     myLibrary,
     isMember,
     syncComplete,
+    librarySyncComplete,
     anyMemberSyncing,
     loading,
     librariesLoading,

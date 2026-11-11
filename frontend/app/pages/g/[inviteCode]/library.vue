@@ -12,13 +12,9 @@ type LibrarySort =
   | 'name_desc'
 
 const group = useGroup()
-const { myLibrary, syncComplete, librariesLoading, actionLoading, toggleSelection } = group
+const { myLibrary, librarySyncComplete, librariesLoading, actionLoading, toggleSelection } = group
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
-
-// Judge "empty" by the library's own sync status: syncComplete comes from /wishlists,
-// which can still be in flight after /libraries has returned.
-const librarySynced = computed(() => myLibrary.value?.member.sync_status.status === 'complete')
 
 const librarySearch = ref('')
 const libraryFilter = ref<LibraryFilter>('all')
@@ -155,9 +151,9 @@ onUnmounted(stopPolling)
             :game="item.game"
             :subtitle="playtimeSubtitle(item)"
             :wants-to-play="item.wants_to_play"
-            :loading="!syncComplete && !item.game"
+            :loading="!librarySyncComplete && !item.game"
             show-checkbox
-            :disabled="!syncComplete || actionLoading"
+            :disabled="!librarySyncComplete || actionLoading"
             @toggle="toggleSelection(item.appid, $event)"
             @open="openGameDetail(item.appid)"
           />
@@ -168,7 +164,7 @@ onUnmounted(stopPolling)
       <p v-else-if="librariesLoading" class="muted list-loading">
         <LoadingSpinner size="md" /> Loading your library…
       </p>
-      <p v-else-if="librarySynced" class="muted">Your library is empty.</p>
+      <p v-else-if="librarySyncComplete" class="muted">Your library is empty.</p>
       <p v-else class="muted">Sync your Steam data from the overview page first.</p>
     </section>
 
