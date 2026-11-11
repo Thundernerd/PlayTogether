@@ -1,7 +1,8 @@
 import type { GameDetail, GameInfo } from '~/types/api'
+import type { MemberLists } from '~/composables/useMemberList'
+import type { Ref } from 'vue'
 
-function patchGameInfoInLists(detail: GameDetail) {
-  const lists = useMemberLists()
+function patchGameInfoInLists(lists: Ref<MemberLists>, detail: GameDetail) {
 
   const patch = (game: GameInfo) => {
     if (game.appid !== detail.appid) return game
@@ -38,6 +39,8 @@ function patchGameInfoInLists(detail: GameDetail) {
 
 export function useGameDetail() {
   const { api } = useApi()
+  // Read in setup: fetchDetail patches the lists after an await, outside the setup context.
+  const lists = useMemberLists()
   const activeAppid = useState<number | null>('game-detail-appid', () => null)
   const cache = useState<Record<number, GameDetail>>('game-detail-cache-v3', () => ({}))
   const loading = ref(false)
@@ -62,7 +65,7 @@ export function useGameDetail() {
     try {
       const result = await api<GameDetail>(`/api/games/${appid}`)
       cache.value = { ...cache.value, [appid]: result }
-      patchGameInfoInLists(result)
+      patchGameInfoInLists(lists, result)
       return result
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load game details'
