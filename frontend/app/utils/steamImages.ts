@@ -6,6 +6,11 @@ export function headerImageSrc(url?: string | null): string | null {
   return trimmed || null
 }
 
+/** Base URL Steam substitutes for `{STEAM_APP_IMAGE}` in descriptions, as seen on live store pages. */
+export function steamAppImageBase(appid: number): string {
+  return `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appid}`
+}
+
 /** Prefix relative API paths (e.g. trailer proxy URLs) with the API base. */
 export function resolveApiMediaUrl(path: string, apiBase: string): string {
   if (path.startsWith('http://') || path.startsWith('https://')) {

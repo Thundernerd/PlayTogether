@@ -1,3 +1,5 @@
+import { steamAppImageBase } from '~/utils/steamImages'
+
 const ALLOWED_TAGS = new Set([
   'p',
   'br',
@@ -17,6 +19,10 @@ const ALLOWED_TAGS = new Set([
   'img',
   'span',
 ])
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value)
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -49,14 +55,14 @@ function sanitizeHtml(html: string): string {
 
         for (const attr of [...element.attributes]) {
           if (tag === 'a' && attr.name === 'href') {
-            if (!/^https?:\/\//i.test(attr.value)) {
+            if (!isHttpUrl(attr.value)) {
               element.removeAttribute(attr.name)
             }
             continue
           }
 
           if (tag === 'img' && (attr.name === 'src' || attr.name === 'alt')) {
-            if (attr.name === 'src' && !/^https?:\/\//i.test(attr.value)) {
+            if (attr.name === 'src' && !isHttpUrl(attr.value)) {
               element.removeAttribute(attr.name)
             }
             continue
@@ -78,11 +84,6 @@ function sanitizeHtml(html: string): string {
   return template.innerHTML
 }
 
-/** Base URL Steam substitutes for `{STEAM_APP_IMAGE}`, as seen on live store pages. */
-export function steamAppImageBase(appid: number): string {
-  return `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appid}`
-}
-
 // Matches `{STEAM_APP_IMAGE}` and the mangled `http://STEAM_APP_IMAGE}` Steam has also sent.
 const STEAM_APP_IMAGE_PLACEHOLDER = /^(?:https?:\/\/)?\{?STEAM_APP_IMAGE\}/i
 
@@ -93,7 +94,7 @@ function resolveImageUrl(raw: string | null | undefined, appid?: number | null):
     if (appid == null) return null
     url = url.replace(STEAM_APP_IMAGE_PLACEHOLDER, steamAppImageBase(appid))
   }
-  return /^https?:\/\//i.test(url) ? url : null
+  return isHttpUrl(url) ? url : null
 }
 
 function imageTag(raw: string | null | undefined, appid?: number | null): string {
@@ -102,12 +103,12 @@ function imageTag(raw: string | null | undefined, appid?: number | null): string
 }
 
 /** Picks the still-image URL from an escaped `[img …]` tag body (after `img`). */
-function imageAttributeUrl(rest: string): string | null {
-  if (rest.startsWith('=')) {
-    return rest.slice(1).trim().split(/\s+/)[0] ?? null
+function imageAttributeUrl(tagBody: string): string | null {
+  if (tagBody.startsWith('=')) {
+    return tagBody.slice(1).trim().split(/\s+/)[0] ?? null
   }
   const attrs: Record<string, string> = {}
-  for (const match of rest.matchAll(/(\w+)=(?:&quot;([\s\S]*?)&quot;|(\S+))/g)) {
+  for (const match of tagBody.matchAll(/(\w+)=(?:&quot;([\s\S]*?)&quot;|(\S+))/g)) {
     attrs[match[1]!.toLowerCase()] = match[2] ?? match[3] ?? ''
   }
   return attrs.src || attrs.poster || null
@@ -119,7 +120,7 @@ export function bbcodeToHtml(input: string, appid?: number | null): string {
   html = html.replace(/\[url=(.*?)\]([\s\S]*?)\[\/url\]/gi, (_, href, label) => {
     const safeHref = String(href).trim()
     const safeLabel = String(label).trim()
-    if (!/^https?:\/\//i.test(safeHref)) {
+    if (!isHttpUrl(safeHref)) {
       return safeLabel
     }
     return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeLabel}</a>`
@@ -127,7 +128,7 @@ export function bbcodeToHtml(input: string, appid?: number | null): string {
 
   html = html.replace(/\[url\]([\s\S]*?)\[\/url\]/gi, (_, href) => {
     const safeHref = String(href).trim()
-    if (!/^https?:\/\//i.test(safeHref)) {
+    if (!isHttpUrl(safeHref)) {
       return safeHref
     }
     return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeHref}</a>`
@@ -137,8 +138,8 @@ export function bbcodeToHtml(input: string, appid?: number | null): string {
 
   // Steam's attribute forms: [img src="…" poster="…" …][/img] and [img=URL …].
   // The input is already escaped here, so quotes appear as &quot;.
-  html = html.replace(/\[img([\s=][^\]]*)\](?:\s*\[\/img\])?/gi, (_, rest) =>
-    imageTag(imageAttributeUrl(String(rest)), appid),
+  html = html.replace(/\[img([\s=][^\]]*)\](?:\s*\[\/img\])?/gi, (_, tagBody) =>
+    imageTag(imageAttributeUrl(String(tagBody)), appid),
   )
   html = html.replace(/\[\/img\]/gi, '')
 
