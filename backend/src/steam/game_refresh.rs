@@ -119,8 +119,8 @@ pub struct RefreshWorker<'a> {
 }
 
 impl RefreshWorker<'_> {
-    /// Starts the cooldown for the `appids` of the current batch that the
-    /// refresh failed for.
+    /// Starts the cooldown for `appids`, which the refresh failed for. They are
+    /// not queued again until it has passed.
     pub fn record_failed(&mut self, appids: &[u32]) {
         let now = (self.queue.now)();
         let mut state = self.queue.state();

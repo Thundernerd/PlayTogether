@@ -288,7 +288,8 @@ impl GameCache {
     }
 
     /// Fetches the `appids` that are due from Steam and caches them. Apps
-    /// Steam fails for keep the row they had; returns their appids.
+    /// Steam fails for keep the row they had; returns their appids. When a
+    /// chunk request fails, every app in the chunk counts as failed.
     pub async fn fetch_missing<F, Fut>(
         state: &AppState,
         client: &impl SteamStore,
