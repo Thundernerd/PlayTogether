@@ -5,7 +5,7 @@ Compare Steam wishlists with friends, mark games you want to play together, and 
 ## Prerequisites
 
 - Rust (stable)
-- Node.js 20+
+- Node.js 22.12+
 - Steam profiles with **public** wishlists and **public game details** (required for sync)
 - A [Steam Web API key](https://steamcommunity.com/dev/apikey) (required for owned-games library sync)
 
