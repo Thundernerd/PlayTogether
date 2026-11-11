@@ -56,7 +56,7 @@ Run the frontend unit tests (Vitest, under `frontend/test/`) with `npm run test`
 
 1. **Create or join a group** using an invite link (no accounts — a browser token identifies you).
 2. **Add your Steam ID64** — the backend fetches your public wishlist and owned games from Steam.
-3. **Game metadata** is fetched in chunks and stored in SQLite (`steam_games`). Cached data is reused across all members and groups for 7 days (prices for 24 hours). Games with no cached row are fetched before a list loads; rows past either TTL are served from the cache and refreshed in the background.
+3. **Game metadata** is fetched in chunks and stored in SQLite (`steam_games`). Cached data is reused across all members and groups for 7 days (prices for 24 hours). Games with no cached row are fetched before a list loads; rows past either TTL are served from the cache and refreshed in the background. A game Steam fails for is not fetched again for 15 minutes, and a game with no cached row is left out of the lists until then.
 4. **Check games** you want to play together on your wishlist or library cards.
 5. **Vote and rate** games in the shared “Play together” list.
 

@@ -258,7 +258,9 @@ impl GameCache {
         }
     }
 
-    /// Fetches the `appids` with no cached row and waits for them. Apps whose
+    /// Fetches the `appids` with no cached row and waits for them. Apps with
+    /// no row that Steam failed for are left out until their cooldown has
+    /// passed, so list loads don't refetch them every time. Apps whose
     /// row is past a TTL are served as cached and queued for the background
     /// refresh. Returns true when the caller must start the refresh worker.
     #[must_use = "when true, the caller must start the refresh worker"]
@@ -273,8 +275,10 @@ impl GameCache {
             .copied()
             .filter(|id| !stored.contains(id))
             .collect();
+        let missing = state.game_refresh.not_cooling_down(&missing);
         if !missing.is_empty() {
-            Self::fetch_missing(state, client, &missing, |_, _| async {}).await?;
+            let failed = Self::fetch_missing(state, client, &missing, |_, _| async {}).await?;
+            state.game_refresh.record_failed(&failed);
         }
 
         let due = Self::get_due_appids(state, appids).await?;
@@ -1359,5 +1363,43 @@ mod tests {
 
         assert!(!starts_worker);
         assert_eq!(state.game_refresh.queued(), Vec::<u32>::new());
+    }
+
+    #[tokio::test]
+    async fn an_uncached_app_steam_fails_for_is_not_fetched_again_during_the_cooldown() {
+        let state = test_state(test_db().await);
+        let failing = FakeSteam::new().failing_every_call_for(UNCACHED);
+        let _ = GameCache::ensure_cached_from(&state, &failing, &[UNCACHED])
+            .await
+            .unwrap();
+
+        let answering = FakeSteam::new().with_store_item(UNCACHED, "Uncached");
+        let _ = GameCache::ensure_cached_from(&state, &answering, &[UNCACHED])
+            .await
+            .unwrap();
+
+        assert_eq!(stored_raw_json(&state.db, UNCACHED).await, None);
+    }
+
+    #[tokio::test]
+    async fn an_uncached_app_steam_failed_for_is_fetched_again_once_the_cooldown_has_passed() {
+        let mut state = test_state(test_db().await);
+        let clock = ManualClock::new();
+        state.game_refresh = Arc::new(GameRefreshQueue::with_clock(clock.clone()));
+        let failing = FakeSteam::new().failing_every_call_for(UNCACHED);
+        let _ = GameCache::ensure_cached_from(&state, &failing, &[UNCACHED])
+            .await
+            .unwrap();
+
+        clock.advance(FAILED_REFRESH_COOLDOWN);
+        let answering = FakeSteam::new().with_store_item(UNCACHED, "Uncached");
+        let _ = GameCache::ensure_cached_from(&state, &answering, &[UNCACHED])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            stored_name(&state.db, UNCACHED).await.as_deref(),
+            Some("Uncached")
+        );
     }
 }
