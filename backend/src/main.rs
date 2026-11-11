@@ -19,7 +19,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use crate::config::Config;
 use crate::jobs::registry::SyncJobRegistry;
 use crate::state::AppState;
-use crate::steam::{GameCache, TagCache};
+use crate::steam::{GameCache, GameRefreshQueue, TagCache};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -59,6 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         http,
         tags: Arc::new(RwLock::new(HashMap::new())),
         sync_jobs: Arc::new(SyncJobRegistry::new()),
+        game_refresh: Arc::new(GameRefreshQueue::new()),
         config: config.clone(),
     };
 
