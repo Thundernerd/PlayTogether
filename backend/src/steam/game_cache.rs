@@ -314,7 +314,7 @@ impl GameCache {
 
             Self::upsert_row(
                 state,
-                SteamGameRow {
+                SteamGameUpsert {
                     appid,
                     name: &name,
                     short_description: &short_description,
@@ -357,7 +357,7 @@ impl GameCache {
 
         Self::upsert_row(
             state,
-            SteamGameRow {
+            SteamGameUpsert {
                 appid,
                 name: &name,
                 short_description: &short_description,
@@ -380,7 +380,7 @@ impl GameCache {
 
         Self::upsert_row(
             state,
-            SteamGameRow {
+            SteamGameUpsert {
                 appid,
                 name: &name,
                 short_description,
@@ -394,8 +394,8 @@ impl GameCache {
         .await
     }
 
-    async fn upsert_row(state: &AppState, row: SteamGameRow<'_>) -> AppResult<()> {
-        let SteamGameRow {
+    async fn upsert_row(state: &AppState, row: SteamGameUpsert<'_>) -> AppResult<()> {
+        let SteamGameUpsert {
             appid,
             name,
             short_description,
@@ -435,7 +435,7 @@ impl GameCache {
 }
 
 /// The fields written to one `steam_games` row by `GameCache::upsert_row`.
-struct SteamGameRow<'a> {
+struct SteamGameUpsert<'a> {
     appid: u32,
     name: &'a str,
     short_description: &'a str,
