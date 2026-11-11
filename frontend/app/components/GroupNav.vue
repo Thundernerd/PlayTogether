@@ -7,6 +7,10 @@ const props = defineProps<{
   libraryLoading?: boolean
   wishlistLoading?: boolean
   sharedLoading?: boolean
+  // The list's last load failed: show a dash, not a count that reads as an empty list.
+  libraryFailed?: boolean
+  wishlistFailed?: boolean
+  sharedFailed?: boolean
 }>()
 
 const route = useRoute()
@@ -18,18 +22,21 @@ const links = computed(() => [
     label: 'My library',
     count: props.libraryCount,
     loading: props.libraryLoading,
+    failed: props.libraryFailed,
   },
   {
     to: `${props.basePath}/wishlist`,
     label: 'My wishlist',
     count: props.wishlistCount,
     loading: props.wishlistLoading,
+    failed: props.wishlistFailed,
   },
   {
     to: `${props.basePath}/play-together`,
     label: 'Play together',
     count: props.sharedCount,
     loading: props.sharedLoading,
+    failed: props.sharedFailed,
   },
 ])
 
@@ -51,7 +58,14 @@ function isActive(link: { to: string; exact?: boolean }) {
       :class="{ active: isActive(link) }"
     >
       {{ link.label }}
-      <span v-if="link.count != null" class="count">
+      <span
+        v-if="link.failed"
+        class="count failed"
+        role="img"
+        title="Couldn't load"
+        aria-label="Couldn't load"
+      >–</span>
+      <span v-else-if="link.count != null" class="count">
         <LoadingSpinner v-if="link.loading" size="sm" />
         <template v-else>{{ link.count }}</template>
       </span>
@@ -101,6 +115,10 @@ function isActive(link: { to: string; exact?: boolean }) {
   border-radius: var(--radius-pill);
   background: var(--surface-2);
   color: var(--text);
+}
+
+.count.failed {
+  color: var(--danger-text);
 }
 
 .nav-link.active .count {

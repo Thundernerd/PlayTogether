@@ -10,6 +10,9 @@ const {
   librariesLoading,
   wishlistsLoading,
   sharedLoading,
+  librariesError,
+  wishlistsError,
+  sharedError,
   actionLoading,
   saveSteamId,
   refreshWishlistSync,
@@ -64,10 +67,13 @@ watch(
 
     <section class="card quick-links">
       <h2 class="section-title">Explore</h2>
+      <!-- A failed list says so instead of "0 games". It is checked before loading so the
+           marker holds steady while a sync keeps polling a failing endpoint. -->
       <div class="link-grid">
         <NuxtLink :to="`${groupBasePath}/library`" class="quick-link card">
           <strong>My library</strong>
-          <span v-if="librariesLoading" class="count-loading">
+          <span v-if="librariesError" class="count-failed">Couldn't load</span>
+          <span v-else-if="librariesLoading" class="count-loading">
             <LoadingSpinner size="sm" /> Loading…
           </span>
           <span v-else>{{ myLibrary?.items.length ?? 0 }} games</span>
@@ -75,7 +81,8 @@ watch(
         </NuxtLink>
         <NuxtLink :to="`${groupBasePath}/wishlist`" class="quick-link card">
           <strong>My wishlist</strong>
-          <span v-if="wishlistsLoading" class="count-loading">
+          <span v-if="wishlistsError" class="count-failed">Couldn't load</span>
+          <span v-else-if="wishlistsLoading" class="count-loading">
             <LoadingSpinner size="sm" /> Loading…
           </span>
           <span v-else>{{ myWishlist?.items.length ?? 0 }} games</span>
@@ -83,7 +90,8 @@ watch(
         </NuxtLink>
         <NuxtLink :to="`${groupBasePath}/play-together`" class="quick-link card">
           <strong>Play together</strong>
-          <span v-if="sharedLoading" class="count-loading">
+          <span v-if="sharedError" class="count-failed">Couldn't load</span>
+          <span v-else-if="sharedLoading" class="count-loading">
             <LoadingSpinner size="sm" /> Loading…
           </span>
           <span v-else>{{ sharedGames.length }} games</span>
@@ -145,6 +153,11 @@ watch(
   align-items: center;
   gap: 0.4rem;
   color: var(--muted);
+}
+
+.count-failed {
+  color: var(--danger-text);
+  font-weight: 700;
 }
 
 .hint {
