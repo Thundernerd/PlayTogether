@@ -1,6 +1,8 @@
 import type { MemberLibrary, MemberWishlist, SharedGame } from '~/types/api'
 
-export type ListKey = 'libraries' | 'wishlists' | 'shared'
+/** Every list the group page loads, in the order the layout reports their errors. */
+export const LIST_KEYS = ['libraries', 'wishlists', 'shared'] as const
+export type ListKey = (typeof LIST_KEYS)[number]
 
 export interface ListData {
   libraries: MemberLibrary[]
@@ -23,17 +25,18 @@ export interface MemberListState<K extends ListKey = ListKey> {
 
 export type MemberLists = { [K in ListKey]: MemberListState<K> }
 
+function emptyMemberList(): MemberListState {
+  return { data: [], loading: false, error: null }
+}
+
 export function emptyMemberLists(): MemberLists {
-  return {
-    libraries: { data: [], loading: false, error: null },
-    wishlists: { data: [], loading: false, error: null },
-    shared: { data: [], loading: false, error: null },
-  }
+  return Object.fromEntries(LIST_KEYS.map((key) => [key, emptyMemberList()])) as MemberLists
 }
 
 /**
  * The shared record of every list, one entry per ListKey. Shared like the rest of the group
- * state, so every page sees the loads the layout starts. useGroup() owns the writes.
+ * state, so every page sees the loads the layout starts. useGroup() loads and resets it;
+ * useGameDetail() patches game info into the loaded data.
  */
 export function useMemberLists() {
   return useState<MemberLists>('groupMemberLists', emptyMemberLists)

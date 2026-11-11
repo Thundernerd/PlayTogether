@@ -1,11 +1,5 @@
 import type { GroupDetailResponse, MeResponse, SyncStatus } from '~/types/api'
-import {
-  emptyMemberLists,
-  useMemberLists,
-  type ListData,
-  type ListKey,
-  type MemberListState,
-} from './useMemberList'
+import type { ListData, ListKey, MemberListState } from '~/composables/useMemberList'
 
 // In-flight requests, shared by every useGroup() instance like the loading flags, so the
 // layout and a page refreshing at once share one request instead of racing on the flags.
@@ -36,7 +30,7 @@ export function useGroup() {
   // Each list's data, loading flag and error, read through useMemberList(key).
   const lists = useMemberLists()
   const listError = computed(
-    () => lists.value.libraries.error ?? lists.value.wishlists.error ?? lists.value.shared.error,
+    () => LIST_KEYS.map((key) => lists.value[key].error).find((e) => e !== null) ?? null,
   )
 
   const loading = ref(false)
