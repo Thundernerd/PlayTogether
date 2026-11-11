@@ -136,11 +136,6 @@ watch(
   background: var(--highlight-tint);
 }
 
-.quick-link:focus-visible {
-  outline: var(--focus-outline);
-  outline-offset: 2px;
-}
-
 .quick-link strong {
   font-size: 1.0625rem;
 }

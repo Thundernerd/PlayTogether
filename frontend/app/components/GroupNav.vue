@@ -90,11 +90,6 @@ function isActive(link: { to: string; exact?: boolean }) {
   color: var(--selected-text);
 }
 
-.nav-link:focus-visible {
-  outline: var(--focus-outline);
-  outline-offset: 2px;
-}
-
 .count {
   display: inline-flex;
   align-items: center;

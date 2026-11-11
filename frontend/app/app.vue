@@ -55,7 +55,7 @@
   /* Accent, not --highlight: yellow on cream is 1.6:1, under the 3:1 a focus
      indicator needs. */
   --focus-ring: var(--accent);
-  --focus-outline: var(--focus-outline);
+  --focus-outline: 3px solid var(--focus-ring);
   --selected-bg: var(--ink);
   --selected-text: var(--surface);
 
@@ -106,6 +106,13 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* Themed keyboard focus for links, buttons and anything else focusable;
+   replaces the browser's blue ring. */
+:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: 2px;
 }
 
 ::selection {
@@ -215,11 +222,6 @@ input[type='checkbox'] {
 .btn:active:not(:disabled) {
   transform: translate(2px, 2px);
   box-shadow: var(--shadow-btn-active);
-}
-
-.btn:focus-visible {
-  outline: var(--focus-outline);
-  outline-offset: 2px;
 }
 
 .btn:disabled {
