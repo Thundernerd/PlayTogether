@@ -12,7 +12,7 @@ type LibrarySort =
   | 'name_desc'
 
 const group = useGroup()
-const { myLibrary, syncComplete, actionLoading, toggleSelection } = group
+const { myLibrary, syncComplete, librariesLoading, actionLoading, toggleSelection } = group
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
 
@@ -161,6 +161,9 @@ onUnmounted(stopPolling)
         <p v-else class="muted">No games match your search or filters.</p>
       </template>
 
+      <p v-else-if="librariesLoading" class="muted list-loading">
+        <LoadingSpinner size="md" /> Loading your library…
+      </p>
       <p v-else-if="syncComplete" class="muted">Your library is empty.</p>
       <p v-else class="muted">Sync your Steam data from the overview page first.</p>
     </section>
@@ -197,6 +200,12 @@ onUnmounted(stopPolling)
 
 .muted {
   color: var(--muted);
+}
+
+.list-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 @media (max-width: 720px) {

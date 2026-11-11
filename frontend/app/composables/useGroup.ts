@@ -21,10 +21,12 @@ export function useGroup() {
   const libraries = useState<MemberLibrary[]>('groupLibraries', () => [])
   const sharedGames = useState<SharedGame[]>('groupSharedGames', () => [])
 
+  // Shared like the data above, so every page's useGroup() sees the loads the layout starts.
+  const librariesLoading = useState('groupLibrariesLoading', () => false)
+  const wishlistsLoading = useState('groupWishlistsLoading', () => false)
+  const sharedLoading = useState('groupSharedLoading', () => false)
+
   const loading = ref(false)
-  const librariesLoading = ref(false)
-  const wishlistsLoading = ref(false)
-  const sharedLoading = ref(false)
   const actionLoading = ref(false)
   const error = ref<string | null>(null)
 
