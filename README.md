@@ -18,6 +18,8 @@ cd backend
 cargo run
 ```
 
+CI fails if the backend isn't `rustfmt`-clean: run `cargo fmt` in `backend/` before pushing (`cargo fmt --check` reports drift without changing files).
+
 Create a `backend/.env` file (optional) to set variables locally — it is loaded automatically on startup:
 
 ```bash
