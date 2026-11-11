@@ -73,12 +73,13 @@ pub fn screenshot_urls(appid: u32, assets: &Option<Assets>, screenshots: &StoreS
     for list in [
         screenshots.all_ages_screenshots.as_deref(),
         screenshots.mature_content_screenshots.as_deref(),
-    ] {
-        if let Some(items) = list {
-            for shot in items {
-                if let Some(filename) = &shot.filename {
-                    urls.push(resolve_asset_url(appid, assets, filename));
-                }
+    ]
+    .into_iter()
+    .flatten()
+    {
+        for shot in list {
+            if let Some(filename) = &shot.filename {
+                urls.push(resolve_asset_url(appid, assets, filename));
             }
         }
     }
@@ -93,12 +94,13 @@ pub fn screenshot_urls_from_item(item: &StoreItem) -> Vec<String> {
 }
 
 pub fn trailer_movie_id(trailer: &StoreTrailer) -> Option<String> {
-    for path in [&trailer.screenshot_medium, &trailer.screenshot_full] {
-        if let Some(path) = path {
-            if let Some(id) = path.split('/').next() {
-                if !id.is_empty() {
-                    return Some(id.to_string());
-                }
+    for path in [&trailer.screenshot_medium, &trailer.screenshot_full]
+        .into_iter()
+        .flatten()
+    {
+        if let Some(id) = path.split('/').next() {
+            if !id.is_empty() {
+                return Some(id.to_string());
             }
         }
     }
@@ -188,9 +190,7 @@ pub fn trailer_entries(trailers: &StoreTrailers) -> Vec<ResolvedTrailer> {
 }
 
 fn resolve_trailer(trailer: &StoreTrailer) -> Option<ResolvedTrailer> {
-    if trailer_video_mp4_url(trailer).is_none() {
-        return None;
-    }
+    trailer_video_mp4_url(trailer)?;
     Some(ResolvedTrailer {
         name: trailer
             .trailer_name
