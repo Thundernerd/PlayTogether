@@ -6,16 +6,9 @@ const {
   me,
   myWishlist,
   myLibrary,
-  sharedGames,
   isMember,
   anyMemberSyncing,
   loading,
-  librariesLoading,
-  wishlistsLoading,
-  sharedLoading,
-  librariesError,
-  wishlistsError,
-  sharedError,
   actionLoading,
   error,
   listError,
@@ -27,6 +20,13 @@ const {
   copyInvite,
   onSyncUpdate,
 } = group
+const { loading: librariesLoading, failed: librariesFailed } = useMemberList('libraries')
+const { loading: wishlistsLoading, failed: wishlistsFailed } = useMemberList('wishlists')
+const {
+  data: sharedGames,
+  loading: sharedLoading,
+  failed: sharedFailed,
+} = useMemberList('shared')
 
 const joinDisplayName = ref('')
 
@@ -91,9 +91,9 @@ onUnmounted(() => {
       :library-loading="librariesLoading"
       :wishlist-loading="wishlistsLoading"
       :shared-loading="sharedLoading"
-      :library-failed="!!librariesError"
-      :wishlist-failed="!!wishlistsError"
-      :shared-failed="!!sharedError"
+      :library-failed="librariesFailed"
+      :wishlist-failed="wishlistsFailed"
+      :shared-failed="sharedFailed"
       @copy-invite="copyInvite"
       @leave-group="leaveGroup"
       @delete-group="deleteGroup"

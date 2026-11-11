@@ -4,21 +4,21 @@ const {
   me,
   myWishlist,
   myLibrary,
-  sharedGames,
   syncComplete,
   anyMemberSyncing,
-  librariesLoading,
-  wishlistsLoading,
-  sharedLoading,
-  librariesError,
-  wishlistsError,
-  sharedError,
   actionLoading,
   saveSteamId,
   refreshWishlistSync,
   groupDetail,
   groupBasePath,
 } = group
+const { loading: librariesLoading, failed: librariesFailed } = useMemberList('libraries')
+const { loading: wishlistsLoading, failed: wishlistsFailed } = useMemberList('wishlists')
+const {
+  data: sharedGames,
+  loading: sharedLoading,
+  failed: sharedFailed,
+} = useMemberList('shared')
 
 const steamIdInput = ref('')
 
@@ -72,7 +72,7 @@ watch(
       <div class="link-grid">
         <NuxtLink :to="`${groupBasePath}/library`" class="quick-link card">
           <strong>My library</strong>
-          <span v-if="librariesError" class="count-failed">Couldn't load</span>
+          <span v-if="librariesFailed" class="count-failed">Couldn't load</span>
           <span v-else-if="librariesLoading" class="count-loading">
             <LoadingSpinner size="sm" /> Loading…
           </span>
@@ -81,7 +81,7 @@ watch(
         </NuxtLink>
         <NuxtLink :to="`${groupBasePath}/wishlist`" class="quick-link card">
           <strong>My wishlist</strong>
-          <span v-if="wishlistsError" class="count-failed">Couldn't load</span>
+          <span v-if="wishlistsFailed" class="count-failed">Couldn't load</span>
           <span v-else-if="wishlistsLoading" class="count-loading">
             <LoadingSpinner size="sm" /> Loading…
           </span>
@@ -90,7 +90,7 @@ watch(
         </NuxtLink>
         <NuxtLink :to="`${groupBasePath}/play-together`" class="quick-link card">
           <strong>Play together</strong>
-          <span v-if="sharedError" class="count-failed">Couldn't load</span>
+          <span v-if="sharedFailed" class="count-failed">Couldn't load</span>
           <span v-else-if="sharedLoading" class="count-loading">
             <LoadingSpinner size="sm" /> Loading…
           </span>

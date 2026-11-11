@@ -5,7 +5,7 @@ Compare Steam wishlists with friends, mark games you want to play together, and 
 ## Prerequisites
 
 - Rust (stable)
-- Node.js 20+
+- Node.js 22.18+ (or 24.11+)
 - Steam profiles with **public** wishlists and **public game details** (required for sync)
 - A [Steam Web API key](https://steamcommunity.com/dev/apikey) (required for owned-games library sync)
 
@@ -49,6 +49,8 @@ npm run dev
 Set `BACKEND_URL=http://localhost:8080` if the API runs elsewhere.
 
 Type-check the frontend (including `.vue` files) with `npm run typecheck`; `npm run build` does not type-check.
+
+Run the frontend unit tests (Vitest, under `frontend/test/`) with `npm run test`.
 
 ## How it works
 
