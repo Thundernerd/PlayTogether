@@ -103,17 +103,8 @@ impl SteamClient {
             .error_for_status()
             .map_err(|e| AppError::Steam(format!("GetItems request failed: {e}")))?;
 
-        // For delisted or hidden apps Steam answers with an item whose appid is 0
-        // (success 15); keep only items for the appids that were asked for, so
-        // callers see those apps as not returned.
         let body: GetItemsResponse = response.json().await?;
-        Ok(body
-            .response
-            .store_items
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|item| appids.contains(&item.appid))
-            .collect())
+        Ok(store_items_for(appids, body))
     }
 
     pub async fn fetch_tag_list(&self) -> AppResult<TagListResponse> {
@@ -195,6 +186,18 @@ pub struct GetItemsResponse {
 #[derive(Debug, Deserialize)]
 pub struct GetItemsResponseInner {
     pub store_items: Option<Vec<StoreItem>>,
+}
+
+/// For delisted or hidden apps Steam answers with an item whose appid is 0
+/// (success 15); keep only items for the appids that were asked for, so
+/// callers see those apps as not returned.
+fn store_items_for(appids: &[u32], body: GetItemsResponse) -> Vec<StoreItem> {
+    body.response
+        .store_items
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|item| appids.contains(&item.appid))
+        .collect()
 }
 
 fn store_list_data_request() -> serde_json::Value {
@@ -389,5 +392,43 @@ pub fn derive_is_released_from_app_details(detail: &AppDetailsData) -> Option<bo
         Some(true)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn store_items_for_drops_the_appid_0_item_steam_returns_for_a_hidden_app() {
+        let body: GetItemsResponse = serde_json::from_str(
+            r#"{"response":{"store_items":[
+                {"item_type":0,"id":620,"success":1,"visible":true,"name":"Portal 2","appid":620,"type":0},
+                {"item_type":0,"id":0,"success":15,"appid":0}
+            ]}}"#,
+        )
+        .unwrap();
+
+        let items = store_items_for(&[620, 1_234_567], body);
+
+        let appids: Vec<u32> = items.iter().map(|item| item.appid).collect();
+        assert_eq!(appids, vec![620]);
+        assert_eq!(items[0].name.as_deref(), Some("Portal 2"));
+    }
+
+    #[test]
+    fn store_items_for_returns_nothing_when_steam_omits_store_items() {
+        // Steam's protobuf-backed JSON leaves out empty repeated fields.
+        let body: GetItemsResponse = serde_json::from_str(r#"{"response":{}}"#).unwrap();
+
+        assert!(store_items_for(&[620], body).is_empty());
+    }
+
+    #[test]
+    fn store_items_for_returns_nothing_for_an_empty_store_items_list() {
+        let body: GetItemsResponse =
+            serde_json::from_str(r#"{"response":{"store_items":[]}}"#).unwrap();
+
+        assert!(store_items_for(&[620], body).is_empty());
     }
 }
