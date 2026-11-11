@@ -35,7 +35,9 @@
   --primary-text: white;
   --focus-ring: rgba(56, 189, 248, 0.35);
 
-  /* Accent states (active nav pill, running sync, floating button) */
+  /* Accent states. --accent-border outlines the running sync badge and the
+     scroll-to-top button; --active-* style the current nav pill, whose border
+     is slightly stronger (0.55 vs 0.5). */
   --accent-border: rgba(56, 189, 248, 0.5);
   --accent-text: #7dd3fc;
   --active-border: rgba(56, 189, 248, 0.55);
@@ -52,7 +54,7 @@
   --discount-text: #dcfce7;
 
   /* Ratings */
-  --rating-avg: #fde68a;
+  --rating-average-text: #fde68a;
   --rating-filled: #fbbf24;
   --rating-empty: #64748b;
 

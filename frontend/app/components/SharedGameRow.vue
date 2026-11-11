@@ -190,7 +190,7 @@ function setStars(value: number) {
 }
 
 .avg {
-  color: var(--rating-avg);
+  color: var(--rating-average-text);
 }
 
 .desc,
