@@ -10,86 +10,120 @@
 </template>
 
 <style>
+/* Tabletop Zine: warm cream paper, ink outlines, serif headings and hard
+   offset shadows. The only theme; see issue #4. */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
   /* Palette */
-  --bg: #0f1419;
-  --surface: #1a2332;
-  --surface-2: #243044;
-  --border: #334155;
-  --text: #e2e8f0;
-  --text-secondary: #cbd5e1;
-  --muted: #94a3b8;
-  --accent: #38bdf8;
-  --accent-2: #22c55e;
-  --danger: #f87171;
-  --warning: #fbbf24;
+  --bg: #f4ecdc;
+  --surface: #fffaf0;
+  --surface-2: #ebe0c9;
+  --surface-bright: #fff;
+  --ink: #2b2118;
+  --border: var(--ink);
+  --text: var(--ink);
+  --muted: #655441;
+  /* Darker than the prototype's #85735f so placeholders clear 4.5:1 on white
+     with margin (5.3:1). */
+  --placeholder: #7a6853;
+  --accent: #a8361a;
+  --accent-2: #3d6628;
+  --danger: #9e2218;
+  /* A deep amber rather than a bright yellow, so warning text reads at 6:1+
+     on the cream and tinted surfaces. */
+  --warning: #7d5200;
+  --highlight: #f2c14e;
+  --highlight-tint: #fff4d6;
 
-  /* Page chrome */
-  --body-bg: radial-gradient(circle at top, #172033 0%, var(--bg) 55%);
-  --header-bg: rgba(15, 20, 25, 0.8);
+  /* Page chrome: dotted paper and a double rule under the header */
+  --body-bg:
+    radial-gradient(rgba(43, 33, 24, 0.09) 1px, transparent 1.2px) 0 0 / 18px 18px,
+    var(--bg);
+  --header-bg: var(--surface);
+  --header-rule: 3px double var(--ink);
+
+  /* Lines */
+  --line: 2px solid var(--border);
+  --line-thin: 1.5px solid var(--border);
+  --line-dashed: 2px dashed var(--border);
+  --line-heavy: 3px solid var(--border);
 
   /* Controls */
-  --primary-bg: linear-gradient(135deg, #0ea5e9, #0284c7);
-  --primary-text: white;
-  --focus-ring: rgba(56, 189, 248, 0.35);
-
-  /* Accent states. --accent-border outlines the running sync badge and the
-     scroll-to-top button; --active-* style the current nav pill, whose border
-     is slightly stronger (0.55 vs 0.5). */
-  --accent-border: rgba(56, 189, 248, 0.5);
-  --accent-text: #7dd3fc;
-  --active-border: rgba(56, 189, 248, 0.55);
-  --active-bg: rgba(56, 189, 248, 0.12);
-  --active-text: #e0f2fe;
+  --primary-bg: var(--accent);
+  --primary-text: var(--surface);
+  /* Accent, not --highlight: yellow on cream is 1.6:1, under the 3:1 a focus
+     indicator needs. */
+  --focus-ring: var(--accent);
+  --focus-outline: 3px solid var(--focus-ring);
+  --selected-bg: var(--ink);
+  --selected-text: var(--surface);
 
   /* Status */
-  --success-border: rgba(34, 197, 94, 0.5);
-  --success-text: #86efac;
-  --danger-border: rgba(248, 113, 113, 0.5);
-  --danger-text: #fca5a5;
-  --danger-tint: rgba(248, 113, 113, 0.1);
-  --discount-bg: #166534;
-  --discount-text: #dcfce7;
+  --success-text: var(--accent-2);
+  --success-tint: #e5efd9;
+  --warning-text: var(--warning);
+  --warning-tint: var(--highlight-tint);
+  --danger-text: var(--danger);
+  --danger-tint: #fde4dc;
+  --discount-bg: var(--accent);
+  --discount-text: var(--surface);
 
   /* Ratings */
-  --rating-average-text: #fde68a;
-  --rating-filled: #fbbf24;
-  --rating-empty: #64748b;
+  --rating-average-text: var(--warning);
+  --rating-filled: var(--accent);
+  /* Darker than the prototype's #9c8a70: 3.9:1 instead of 3.2:1 on --surface,
+     comfortably over the 3:1 icons need. */
+  --rating-empty: #8f7c62;
 
-  /* Overlays and elevation */
-  --overlay-bg: rgba(2, 6, 23, 0.78);
-  --overlay-control-bg: rgba(15, 20, 25, 0.85);
-  --floating-bg: rgba(26, 35, 50, 0.95);
-  --shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --shadow-modal: 0 24px 80px rgba(0, 0, 0, 0.45);
+  /* Overlays */
+  --overlay-bg: rgba(43, 33, 24, 0.6);
+
+  /* Hard offset shadows */
+  --shadow-sm: 2px 2px 0 var(--ink);
+  --shadow-btn: 3px 3px 0 var(--ink);
+  --shadow-btn-hover: 4px 4px 0 var(--ink);
+  --shadow-btn-active: 1px 1px 0 var(--ink);
+  --shadow-tile: 4px 4px 0 var(--ink);
+  --shadow-tile-hover: 6px 6px 0 var(--ink);
+  --shadow-card: 5px 5px 0 var(--ink);
+  --shadow-modal: 10px 10px 0 var(--ink);
 
   /* Media (always dark, whatever the theme) */
-  --media-letterbox: #000;
+  --media-letterbox: var(--ink);
   --media-scrim: rgba(0, 0, 0, 0.35);
   --on-media: #fff;
 
   /* Radii */
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
-  --radius-xl: 14px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
   --radius-pill: 999px;
 
   /* Typography */
-  --font-body: Inter, system-ui, -apple-system, sans-serif;
-  --font-heading: var(--font-body);
+  --font-body: Karla, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-heading: Fraunces, Georgia, serif;
 }
 
 * {
   box-sizing: border-box;
 }
 
+/* Themed keyboard focus for links, buttons and anything else focusable;
+   replaces the browser's blue ring. */
+:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--highlight);
+  color: var(--text);
+}
+
 body {
   margin: 0;
   font-family: var(--font-body);
+  font-size: 16.5px;
   background: var(--body-bg);
   color: var(--text);
   min-height: 100vh;
@@ -103,6 +137,19 @@ h5,
 h6,
 .brand {
   font-family: var(--font-heading);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 2.25rem;
 }
 
 /* Browsers don't let buttons inherit the page font; make them use it. */
@@ -112,7 +159,13 @@ button {
 
 a {
   color: var(--accent);
-  text-decoration: none;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+input[type='checkbox'] {
+  accent-color: var(--accent);
 }
 
 .app-shell {
@@ -120,16 +173,22 @@ a {
 }
 
 .app-header {
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--header-rule);
   padding: 1rem 1.5rem;
-  backdrop-filter: blur(8px);
   background: var(--header-bg);
 }
 
 .brand {
-  font-weight: 700;
-  font-size: 1.125rem;
-  letter-spacing: 0.02em;
+  color: var(--text);
+  font-size: 1.5rem;
+  text-decoration: none;
+}
+
+.brand::before {
+  content: '♣ ';
+  /* Empty alt text keeps screen readers from announcing "club" before the name. */
+  content: '♣ ' / '';
+  color: var(--accent);
 }
 
 .app-main {
@@ -140,25 +199,34 @@ a {
 
 .card {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem;
+  border: var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card);
+  padding: 1.5rem;
 }
 
 .btn {
   appearance: none;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
+  border: var(--line);
+  background: var(--surface);
   color: var(--text);
   border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-btn);
   padding: 0.625rem 1rem;
   font: inherit;
+  font-weight: 700;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: transform 0.1s, box-shadow 0.1s;
 }
 
 .btn:hover:not(:disabled) {
-  border-color: var(--accent);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow-btn-hover);
+}
+
+.btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-btn-active);
 }
 
 .btn:disabled {
@@ -168,29 +236,34 @@ a {
 
 .btn-primary {
   background: var(--primary-bg);
-  border-color: transparent;
   color: var(--primary-text);
-  font-weight: 600;
 }
 
 .input {
   width: 100%;
-  border: 1px solid var(--border);
-  background: var(--bg);
+  border: var(--line);
+  background: var(--surface-bright);
   color: var(--text);
   border-radius: var(--radius-sm);
   padding: 0.625rem 0.75rem;
   font: inherit;
 }
 
+.input::placeholder {
+  color: var(--placeholder);
+}
+
 .input:focus {
-  outline: 2px solid var(--focus-ring);
-  border-color: var(--accent);
+  outline: var(--focus-outline);
+  outline-offset: 1px;
 }
 
 .label {
   display: block;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 0.375rem;
 }
@@ -198,17 +271,42 @@ a {
 .grid-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
 .section-title {
   margin: 0 0 1rem;
-  font-size: 1.25rem;
+  font-size: 1.5rem;
 }
 
 .section-subtitle {
   margin: -0.5rem 0 1rem;
   color: var(--muted);
   font-size: 0.9375rem;
+}
+
+/* Steam tags on game cards, shared rows and the detail modal; each sets its
+   own size. */
+.tag {
+  border: var(--line-thin);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text);
+  text-transform: lowercase;
+}
+
+.error-message {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: var(--line);
+  background: var(--danger-tint);
+  color: var(--danger-text);
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: none;
+  }
 }
 </style>

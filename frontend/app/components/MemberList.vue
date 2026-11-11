@@ -35,9 +35,9 @@ defineProps<{
   gap: 1rem;
   align-items: flex-start;
   padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg);
+  border: var(--line-dashed);
+  border-radius: var(--radius-sm);
+  background: var(--surface-bright);
 }
 
 .meta {

@@ -20,7 +20,7 @@ withDefaults(
 .spinner {
   display: inline-block;
   border-radius: 50%;
-  border: 2px solid var(--border);
+  border: 2px solid var(--surface-2);
   border-top-color: var(--accent);
   animation: spin 0.7s linear infinite;
   flex-shrink: 0;
