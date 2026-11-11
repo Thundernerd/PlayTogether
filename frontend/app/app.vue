@@ -276,6 +276,16 @@ input[type='checkbox'] {
   font-size: 0.9375rem;
 }
 
+/* Steam tags on game cards, shared rows and the detail modal; each sets its
+   own size. */
+.tag {
+  border: var(--line-thin);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text);
+  text-transform: lowercase;
+}
+
 .error-message {
   margin: 0;
   padding: 0.5rem 0.75rem;

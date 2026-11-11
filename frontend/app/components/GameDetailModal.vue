@@ -376,10 +376,6 @@ onUnmounted(() => {
 .tag {
   font-size: 0.75rem;
   padding: 0.2rem 0.55rem;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  border: var(--line-thin);
-  text-transform: lowercase;
 }
 
 .store-link {

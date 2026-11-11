@@ -216,11 +216,6 @@ const showImagePlaceholder = computed(
 .tag {
   font-size: 0.6875rem;
   padding: 0.15rem 0.45rem;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  border: var(--line-thin);
-  color: var(--text);
-  text-transform: lowercase;
 }
 
 .checkbox-row {
