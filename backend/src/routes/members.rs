@@ -1,6 +1,6 @@
 use axum::{
-    Json,
     extract::{Path, State},
+    Json,
 };
 
 use crate::db;
@@ -111,7 +111,9 @@ pub async fn set_selection(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(serde_json::json!({ "appid": appid, "wants_to_play": body.wants_to_play })))
+    Ok(Json(
+        serde_json::json!({ "appid": appid, "wants_to_play": body.wants_to_play }),
+    ))
 }
 
 pub async fn leave_group(
@@ -123,12 +125,10 @@ pub async fn leave_group(
     let member_id = auth.id.to_string();
     let group_id = auth.group_id.to_string();
 
-    let member_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM members WHERE group_id = ?",
-    )
-    .bind(&group_id)
-    .fetch_one(&state.db)
-    .await?;
+    let member_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM members WHERE group_id = ?")
+        .bind(&group_id)
+        .fetch_one(&state.db)
+        .await?;
 
     let mut tx = state.db.begin().await?;
 

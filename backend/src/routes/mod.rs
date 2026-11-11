@@ -4,8 +4,8 @@ mod members;
 mod wishlists;
 
 use axum::{
-    Router,
     routing::{delete, get, post, put},
+    Router,
 };
 
 use crate::state::AppState;
@@ -14,10 +14,21 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/groups", post(groups::create_group))
         .route("/api/groups/by-invite/{code}", get(groups::get_by_invite))
-        .route("/api/groups/by-invite/{code}/join", post(groups::join_group))
+        .route(
+            "/api/groups/by-invite/{code}/join",
+            post(groups::join_group),
+        )
         .route("/api/groups/{group_id}", delete(groups::delete_group))
-        .route("/api/members/me", get(members::get_me).patch(members::update_me).delete(members::leave_group))
-        .route("/api/members/me/refresh-wishlist", post(members::refresh_wishlist))
+        .route(
+            "/api/members/me",
+            get(members::get_me)
+                .patch(members::update_me)
+                .delete(members::leave_group),
+        )
+        .route(
+            "/api/members/me/refresh-wishlist",
+            post(members::refresh_wishlist),
+        )
         .route("/api/members/me/sync-status", get(members::get_sync_status))
         .route(
             "/api/members/me/selections/{appid}",
