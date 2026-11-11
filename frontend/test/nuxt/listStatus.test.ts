@@ -13,4 +13,8 @@ describe('listStatus', () => {
   it('keeps the failed state while a loaded list reloads after a failure', () => {
     expect(listStatus({ itemCount: 0, loaded: true, loading: true, error: 'boom' })).toBe('failed')
   })
+
+  it('keeps the failed state while a list that never loaded is retried', () => {
+    expect(listStatus({ itemCount: 0, loaded: false, loading: true, error: 'boom' })).toBe('failed')
+  })
 })
