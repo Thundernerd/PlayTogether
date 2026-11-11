@@ -1,9 +1,7 @@
-import type { GameDetail, GameInfo, MemberLibrary, MemberWishlist, SharedGame } from '~/types/api'
+import type { GameDetail, GameInfo } from '~/types/api'
 
 function patchGameInfoInLists(detail: GameDetail) {
-  const wishlists = useState<MemberWishlist[]>('groupWishlists')
-  const libraries = useState<MemberLibrary[]>('groupLibraries')
-  const sharedGames = useState<SharedGame[]>('groupSharedGames')
+  const lists = useMemberLists()
 
   const patch = (game: GameInfo) => {
     if (game.appid !== detail.appid) return game
@@ -19,21 +17,21 @@ function patchGameInfoInLists(detail: GameDetail) {
     }
   }
 
-  wishlists.value = wishlists.value.map((wishlist) => ({
+  lists.value.wishlists.data = lists.value.wishlists.data.map((wishlist) => ({
     ...wishlist,
     items: wishlist.items.map((item) =>
       item.game ? { ...item, game: patch(item.game) } : item,
     ),
   }))
 
-  libraries.value = libraries.value.map((library) => ({
+  lists.value.libraries.data = lists.value.libraries.data.map((library) => ({
     ...library,
     items: library.items.map((item) =>
       item.game ? { ...item, game: patch(item.game) } : item,
     ),
   }))
 
-  sharedGames.value = sharedGames.value.map((item) =>
+  lists.value.shared.data = lists.value.shared.data.map((item) =>
     item.appid === detail.appid ? { ...item, game: patch(item.game) } : item,
   )
 }

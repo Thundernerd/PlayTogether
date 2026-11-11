@@ -18,12 +18,11 @@ const group = useGroup()
 const {
   myLibrary,
   librarySyncComplete,
-  librariesLoading,
-  librariesError,
   actionLoading,
   toggleSelection,
   retryListLoads,
 } = group
+const { loading: librariesLoading, error: librariesError } = useMemberList('libraries')
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
 
@@ -39,8 +38,10 @@ const status = computed(() =>
     loaded: !!myLibrary.value,
     loading: librariesLoading.value,
     error: librariesError.value,
-    syncStatus: myLibrary.value?.member.sync_status.status,
-    syncComplete: librarySyncComplete.value,
+    sync: {
+      status: myLibrary.value?.member.sync_status.status,
+      complete: librarySyncComplete.value,
+    },
   }),
 )
 
@@ -183,17 +184,17 @@ onUnmounted(stopPolling)
         <p v-else class="muted">No games match your search or filters.</p>
       </template>
 
-      <LoadingMessage v-else-if="status === 'loading'">Loading your library…</LoadingMessage>
-      <ListLoadFailed
-        v-else-if="status === 'failed'"
+      <MemberListStatus
+        v-else
+        :status="status"
         :retrying="librariesLoading"
+        loading-text="Loading your library…"
+        failed-text="Couldn't load your library."
+        syncing-text="Syncing your library from Steam…"
+        empty-text="Your library is empty."
+        not-synced-text="Sync your Steam data from the overview page first."
         @retry="retryListLoads"
-      >
-        Couldn't load your library.
-      </ListLoadFailed>
-      <p v-else-if="status === 'syncing'" class="muted">Syncing your library from Steam…</p>
-      <p v-else-if="status === 'empty'" class="muted">Your library is empty.</p>
-      <p v-else class="muted">Sync your Steam data from the overview page first.</p>
+      />
     </section>
 
     <ScrollToTop />

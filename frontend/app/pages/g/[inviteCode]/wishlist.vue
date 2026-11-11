@@ -13,12 +13,11 @@ const group = useGroup()
 const {
   myWishlist,
   syncComplete,
-  wishlistsLoading,
-  wishlistsError,
   actionLoading,
   toggleSelection,
   retryListLoads,
 } = group
+const { loading: wishlistsLoading, error: wishlistsError } = useMemberList('wishlists')
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
 
@@ -34,8 +33,10 @@ const status = computed(() =>
     loaded: !!myWishlist.value,
     loading: wishlistsLoading.value,
     error: wishlistsError.value,
-    syncStatus: myWishlist.value?.member.sync_status.status,
-    syncComplete: syncComplete.value,
+    sync: {
+      status: myWishlist.value?.member.sync_status.status,
+      complete: syncComplete.value,
+    },
   }),
 )
 
@@ -163,17 +164,17 @@ onUnmounted(stopPolling)
         <p v-else class="muted">No games match your search or filters.</p>
       </template>
 
-      <LoadingMessage v-else-if="status === 'loading'">Loading your wishlist…</LoadingMessage>
-      <ListLoadFailed
-        v-else-if="status === 'failed'"
+      <MemberListStatus
+        v-else
+        :status="status"
         :retrying="wishlistsLoading"
+        loading-text="Loading your wishlist…"
+        failed-text="Couldn't load your wishlist."
+        syncing-text="Syncing your wishlist from Steam…"
+        empty-text="Your wishlist is empty."
+        not-synced-text="Sync your Steam wishlist from the overview page first."
         @retry="retryListLoads"
-      >
-        Couldn't load your wishlist.
-      </ListLoadFailed>
-      <p v-else-if="status === 'syncing'" class="muted">Syncing your wishlist from Steam…</p>
-      <p v-else-if="status === 'empty'" class="muted">Your wishlist is empty.</p>
-      <p v-else class="muted">Sync your Steam wishlist from the overview page first.</p>
+      />
     </section>
 
     <ScrollToTop />

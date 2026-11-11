@@ -3,17 +3,18 @@
 definePageMeta({ showsListErrors: true })
 
 const group = useGroup()
-const {
-  sharedGames,
-  sharedLoading,
-  sharedError,
-  actionLoading,
-  vote,
-  rate,
-  groupBasePath,
-  retryListLoads,
-} = group
+const { actionLoading, vote, rate, groupBasePath, retryListLoads } = group
+const { data: sharedGames, loading: sharedLoading, error: sharedError } = useMemberList('shared')
 const { open: openGameDetail } = useGameDetail()
+
+// No sync behind this list, and every load without items shows 'loading'.
+const status = computed(() =>
+  memberListStatus({
+    itemCount: sharedGames.value.length,
+    loading: sharedLoading.value,
+    error: sharedError.value,
+  }),
+)
 </script>
 
 <template>
@@ -24,7 +25,7 @@ const { open: openGameDetail } = useGameDetail()
         Games someone wants to play — vote and rate to help the group decide what to play next.
       </p>
 
-      <div v-if="sharedGames.length" class="shared-list">
+      <div v-if="status === 'items'" class="shared-list">
         <SharedGameRow
           v-for="game in sharedGames"
           :key="game.appid"
@@ -35,16 +36,21 @@ const { open: openGameDetail } = useGameDetail()
           @open="openGameDetail(game.appid)"
         />
       </div>
-      <LoadingMessage v-else-if="sharedLoading">Loading shared games…</LoadingMessage>
-      <ListLoadFailed v-else-if="sharedError" :retrying="sharedLoading" @retry="retryListLoads">
-        Couldn't load the shared games.
-      </ListLoadFailed>
-      <p v-else class="muted">
-        No games selected yet. Mark games on
-        <NuxtLink :to="`${groupBasePath}/library`">your library</NuxtLink>
-        or
-        <NuxtLink :to="`${groupBasePath}/wishlist`">your wishlist</NuxtLink>.
-      </p>
+      <MemberListStatus
+        v-else
+        :status="status"
+        :retrying="sharedLoading"
+        loading-text="Loading shared games…"
+        failed-text="Couldn't load the shared games."
+        @retry="retryListLoads"
+      >
+        <template #empty>
+          No games selected yet. Mark games on
+          <NuxtLink :to="`${groupBasePath}/library`">your library</NuxtLink>
+          or
+          <NuxtLink :to="`${groupBasePath}/wishlist`">your wishlist</NuxtLink>.
+        </template>
+      </MemberListStatus>
     </section>
 
     <ScrollToTop />
@@ -62,9 +68,5 @@ const { open: openGameDetail } = useGameDetail()
   flex-direction: column;
   gap: 1rem;
   margin-top: 1rem;
-}
-
-.muted {
-  color: var(--muted);
 }
 </style>
