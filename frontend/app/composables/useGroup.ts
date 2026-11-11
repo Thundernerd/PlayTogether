@@ -70,15 +70,11 @@ export function useGroup() {
     groupDetail.value = await api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`)
   }
 
-  async function loadMe() {
-    if (!token.value) {
-      me.value = null
-      return
-    }
+  async function fetchMe(): Promise<MeResponse | null> {
     try {
-      me.value = await api<MeResponse>('/api/members/me')
+      return await api<MeResponse>('/api/members/me')
     } catch {
-      me.value = null
+      return null
     }
   }
 
@@ -148,12 +144,16 @@ export function useGroup() {
     loading.value = true
     error.value = null
     try {
-      if (!groupDetail.value) {
-        await loadGroup()
-      }
-      if (token.value && !me.value) {
-        await loadMe()
-      }
+      const [nextGroup, nextMe] = await Promise.all([
+        groupDetail.value
+          ? undefined
+          : api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`),
+        token.value && !me.value ? fetchMe() : undefined,
+      ])
+      // Assign and start the list loads in one synchronous step: otherwise Vue renders the
+      // member's page before the loading flags are set, flashing its empty / not-synced text.
+      if (nextGroup) groupDetail.value = nextGroup
+      if (nextMe !== undefined) me.value = nextMe
       if (isMember.value) {
         const fetches: Promise<void>[] = []
         if (options.libraries ?? true) fetches.push(loadLibraries())
