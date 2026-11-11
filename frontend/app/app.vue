@@ -105,6 +105,11 @@ h6,
   font-family: var(--font-heading);
 }
 
+/* Browsers don't let buttons inherit the page font; make them use it. */
+button {
+  font: inherit;
+}
+
 a {
   color: var(--accent);
   text-decoration: none;
