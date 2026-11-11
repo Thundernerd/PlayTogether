@@ -6,6 +6,7 @@ Compare Steam wishlists with friends, mark games you want to play together, and 
 
 - Rust (stable)
 - Node.js 22.18+ (or 24.11+)
+- npm 11.16.0, the version pinned in `frontend/package.json`'s `packageManager` field (`npm install -g npm@11.16.0`). CI and the Docker build use this npm; npm 10 (bundled with Node 22) resolves `frontend/package-lock.json` differently, so update the lockfile only with the pinned npm.
 - Steam profiles with **public** wishlists and **public game details** (required for sync)
 - A [Steam Web API key](https://steamcommunity.com/dev/apikey) (required for owned-games library sync)
 
