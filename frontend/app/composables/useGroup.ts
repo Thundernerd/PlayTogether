@@ -103,6 +103,7 @@ export function useGroup() {
         if (inflight[key] !== request) return
         list().data = data
         list().error = null
+        list().loaded = true
       })
       .catch((e: unknown) => {
         if (inflight[key] === request) {

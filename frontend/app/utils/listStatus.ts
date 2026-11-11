@@ -1,14 +1,15 @@
 import type { SyncJobStatus } from '~/types/api'
 
 // What a list page shows, checked in this order. 'items' wins whenever there is something to
-// show. For a member's own list, 'loading' only covers the first load, so poll refreshes
-// during a sync keep the 'syncing' text instead of swapping it for a spinner.
+// show. 'loading' only covers a list's first load, so poll, vote and rate refreshes keep
+// the current text (such as 'syncing' or 'empty') instead of swapping it for a spinner.
 export type ListStatus = 'items' | 'loading' | 'failed' | 'syncing' | 'empty' | 'not-synced'
 
 export function listStatus(list: {
   itemCount: number
   /**
-   * Whether a load has returned the list yet (for a member's own list, their entry in it);
+   * Whether a load has returned the list yet (for a member's own list, their entry in it;
+   * for the shared list, the record's `loaded` marker);
    * once it has, a reload keeps the current status instead of showing 'loading'. Left out,
    * every load shows 'loading'.
    */

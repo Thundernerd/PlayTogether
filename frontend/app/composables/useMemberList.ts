@@ -21,12 +21,17 @@ export interface MemberListState<K extends ListKey = ListKey> {
    * starts keeps the failed state steady while a sync keeps polling a failing endpoint.
    */
   error: string | null
+  /**
+   * A load of this list has succeeded since the record was last reset, so a page can show
+   * its loading state only on the first load and keep its current text during reloads.
+   */
+  loaded: boolean
 }
 
 export type MemberLists = { [K in ListKey]: MemberListState<K> }
 
 function emptyMemberList(): MemberListState {
-  return { data: [], loading: false, error: null }
+  return { data: [], loading: false, error: null, loaded: false }
 }
 
 export function emptyMemberLists(): MemberLists {
@@ -51,6 +56,7 @@ export function useMemberList<K extends ListKey>(key: K) {
     data: computed(() => list.value.data),
     loading: computed(() => list.value.loading),
     error: computed(() => list.value.error),
+    loaded: computed(() => list.value.loaded),
     /** Counts (nav badge, overview link) show the failed marker instead of a number. */
     failed: computed(() => list.value.error !== null),
   }

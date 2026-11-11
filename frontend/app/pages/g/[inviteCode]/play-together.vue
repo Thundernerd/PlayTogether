@@ -4,13 +4,20 @@ definePageMeta({ showsListErrors: true })
 
 const group = useGroup()
 const { actionLoading, vote, rate, groupBasePath, retryListLoads } = group
-const { data: sharedGames, loading: sharedLoading, error: sharedError } = useMemberList('shared')
+const {
+  data: sharedGames,
+  loaded: sharedLoaded,
+  loading: sharedLoading,
+  error: sharedError,
+} = useMemberList('shared')
 const { open: openGameDetail } = useGameDetail()
 
-// No sync behind this list, and every load without items shows 'loading'.
+// No sync behind this list. Only the first load shows 'loading', so poll, vote and rate
+// refreshes keep the current text instead of flashing the spinner.
 const status = computed(() =>
   listStatus({
     itemCount: sharedGames.value.length,
+    loaded: sharedLoaded.value,
     loading: sharedLoading.value,
     error: sharedError.value,
   }),
