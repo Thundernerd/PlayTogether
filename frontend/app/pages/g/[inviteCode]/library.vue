@@ -22,7 +22,11 @@ const {
   toggleSelection,
   retryListLoads,
 } = group
-const { loading: librariesLoading, error: librariesError } = useMemberList('libraries')
+const {
+  loading: librariesLoading,
+  error: librariesError,
+  refreshFailed: librariesRefreshFailed,
+} = useMemberList('libraries')
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
 
@@ -127,6 +131,12 @@ onUnmounted(stopPolling)
       <div v-if="myLibrary?.member.sync_status.status === 'running'" class="sync-banner">
         <SyncStatusBadge :status="myLibrary.member.sync_status" />
       </div>
+
+      <ListRefreshFailed
+        v-if="librariesRefreshFailed && status !== 'failed'"
+        :retrying="librariesLoading"
+        @retry="retryListLoads"
+      />
 
       <template v-if="status === 'items' && myLibrary">
         <div class="library-toolbar">

@@ -4,13 +4,20 @@ definePageMeta({ showsListErrors: true })
 
 const group = useGroup()
 const { actionLoading, vote, rate, groupBasePath, retryListLoads } = group
-const { data: sharedGames, loading: sharedLoading, error: sharedError } = useMemberList('shared')
+const {
+  data: sharedGames,
+  loaded: sharedLoaded,
+  loading: sharedLoading,
+  error: sharedError,
+  refreshFailed: sharedRefreshFailed,
+} = useMemberList('shared')
 const { open: openGameDetail } = useGameDetail()
 
-// No sync behind this list, and every load without items shows 'loading'.
+// No sync behind this list, so no items once it has loaded is 'empty'.
 const status = computed(() =>
   listStatus({
     itemCount: sharedGames.value.length,
+    loaded: sharedLoaded.value,
     loading: sharedLoading.value,
     error: sharedError.value,
   }),
@@ -24,6 +31,8 @@ const status = computed(() =>
       <p class="section-subtitle">
         Games someone wants to play — vote and rate to help the group decide what to play next.
       </p>
+
+      <ListRefreshFailed v-if="sharedRefreshFailed" :retrying="sharedLoading" @retry="retryListLoads" />
 
       <div v-if="status === 'items'" class="shared-list">
         <SharedGameRow

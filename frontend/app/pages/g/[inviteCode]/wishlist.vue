@@ -17,7 +17,11 @@ const {
   toggleSelection,
   retryListLoads,
 } = group
-const { loading: wishlistsLoading, error: wishlistsError } = useMemberList('wishlists')
+const {
+  loading: wishlistsLoading,
+  error: wishlistsError,
+  refreshFailed: wishlistsRefreshFailed,
+} = useMemberList('wishlists')
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
 
@@ -109,6 +113,12 @@ onUnmounted(stopPolling)
       <div v-if="myWishlist?.member.sync_status.status === 'running'" class="sync-banner">
         <SyncStatusBadge :status="myWishlist.member.sync_status" />
       </div>
+
+      <ListRefreshFailed
+        v-if="wishlistsRefreshFailed && status !== 'failed'"
+        :retrying="wishlistsLoading"
+        @retry="retryListLoads"
+      />
 
       <template v-if="status === 'items' && myWishlist">
         <div class="wishlist-toolbar">

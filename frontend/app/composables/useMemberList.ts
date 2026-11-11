@@ -13,6 +13,11 @@ export interface ListData {
 /** Everything the app knows about one of the group's lists. */
 export interface MemberListState<K extends ListKey = ListKey> {
   data: ListData[K]
+  /**
+   * A load of this list has succeeded since the last reset, so `data` is a real list (maybe
+   * an empty one) and an error only means the last refresh failed.
+   */
+  loaded: boolean
   /** A request for this list is in flight. */
   loading: boolean
   /**
@@ -26,7 +31,7 @@ export interface MemberListState<K extends ListKey = ListKey> {
 export type MemberLists = { [K in ListKey]: MemberListState<K> }
 
 function emptyMemberList(): MemberListState {
-  return { data: [], loading: false, error: null }
+  return { data: [], loaded: false, loading: false, error: null }
 }
 
 export function emptyMemberLists(): MemberLists {
@@ -51,7 +56,10 @@ export function useMemberList<K extends ListKey>(key: K) {
     data: computed(() => list.value.data),
     loading: computed(() => list.value.loading),
     error: computed(() => list.value.error),
-    /** Counts (nav badge, overview link) show the failed marker instead of a number. */
-    failed: computed(() => list.value.error !== null),
+    loaded: computed(() => list.value.loaded),
+    /** What the list's count (nav badge, overview link) shows. */
+    countStatus: computed(() => countStatus(list.value)),
+    /** The list loaded before, but its last refresh failed: pages show the last list. */
+    refreshFailed: computed(() => list.value.loaded && list.value.error !== null),
   }
 }
