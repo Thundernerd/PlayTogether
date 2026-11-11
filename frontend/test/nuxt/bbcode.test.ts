@@ -2,27 +2,28 @@ import { describe, expect, it } from 'vitest'
 import { renderGameDescription } from '~/utils/bbcode'
 
 const APPID = 570
+/** Where `{STEAM_APP_IMAGE}` must resolve to for APPID, as seen on live Steam store pages. */
+const STEAM_APP_IMAGE_570 = 'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/570'
 
-function parse(html: string): DocumentFragment {
+function parseFragment(html: string): DocumentFragment {
   const template = document.createElement('template')
   template.innerHTML = html
   return template.content
 }
 
-function imageSources(html: string): (string | null)[] {
-  return [...parse(html).querySelectorAll('img')].map((img) => img.getAttribute('src'))
+/** Asserts the rendered HTML holds exactly these image sources and this visible text. */
+function expectRendered(html: string, sources: string[], text: string) {
+  const fragment = parseFragment(html)
+  expect([...fragment.querySelectorAll('img')].map((img) => img.getAttribute('src'))).toEqual(sources)
+  expect(fragment.textContent).toBe(text)
 }
 
 describe('renderGameDescription images', () => {
   it('renders [img]URL[/img] as an image', () => {
     const html = renderGameDescription('Intro [img]https://cdn.example.com/a.png[/img] outro', APPID)
 
-    expect(imageSources(html)).toEqual(['https://cdn.example.com/a.png'])
-    expect(parse(html).textContent).toBe('Intro  outro')
+    expectRendered(html, ['https://cdn.example.com/a.png'], 'Intro  outro')
   })
-
-  const STEAM_EXTRAS_AVIF =
-    'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/570/extras/x.avif'
 
   it.each([
     [
@@ -40,24 +41,19 @@ describe('renderGameDescription images', () => {
   ])('resolves the attribute form (%s) to the Steam CDN', (_, tag) => {
     const html = renderGameDescription(`Before ${tag} after`, APPID)
 
-    expect(imageSources(html)).toEqual([STEAM_EXTRAS_AVIF])
-    expect(parse(html).textContent).toBe('Before  after')
+    expectRendered(html, [`${STEAM_APP_IMAGE_570}/extras/x.avif`], 'Before  after')
   })
 
   it('resolves the older [img=http://STEAM_APP_IMAGE}…] form to the Steam CDN', () => {
     const html = renderGameDescription('[img=http://STEAM_APP_IMAGE}/extras/x.gif fromclient=1]', APPID)
 
-    expect(imageSources(html)).toEqual([
-      'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/570/extras/x.gif',
-    ])
-    expect(parse(html).textContent).toBe('')
+    expectRendered(html, [`${STEAM_APP_IMAGE_570}/extras/x.gif`], '')
   })
 
   it('renders a quoted [img="URL"] as an image', () => {
     const html = renderGameDescription('[img="https://cdn.example.com/b.png"][/img]', APPID)
 
-    expect(imageSources(html)).toEqual(['https://cdn.example.com/b.png'])
-    expect(parse(html).textContent).toBe('')
+    expectRendered(html, ['https://cdn.example.com/b.png'], '')
   })
 
   it.each([
@@ -68,8 +64,7 @@ describe('renderGameDescription images', () => {
     for (const appid of [undefined, null]) {
       const html = renderGameDescription(`Before ${tag} after`, appid)
 
-      expect(imageSources(html)).toEqual([])
-      expect(parse(html).textContent).toBe('Before  after')
+      expectRendered(html, [], 'Before  after')
     }
   })
 
@@ -80,9 +75,8 @@ describe('renderGameDescription images', () => {
   ])('drops a non-http(s) %s image URL', (_, tag) => {
     const html = renderGameDescription(`Before ${tag} after`, APPID)
 
-    expect(imageSources(html)).toEqual([])
+    expectRendered(html, [], 'Before  after')
     expect(html).not.toContain('javascript:')
-    expect(parse(html).textContent).toBe('Before  after')
   })
 
   it.each([
@@ -91,14 +85,13 @@ describe('renderGameDescription images', () => {
   ])('leaves no tag text for %s', (_, description) => {
     const html = renderGameDescription(description, APPID)
 
-    expect(imageSources(html)).toEqual([])
-    expect(parse(html).textContent).toBe('Before  after')
+    expectRendered(html, [], 'Before  after')
   })
 })
 
 describe('renderGameDescription sanitising', () => {
   function eventHandlerAttributes(html: string): string[] {
-    return [...parse(html).querySelectorAll('*')].flatMap((element) =>
+    return [...parseFragment(html).querySelectorAll('*')].flatMap((element) =>
       element.getAttributeNames().filter((name) => name.startsWith('on')),
     )
   }
@@ -106,7 +99,7 @@ describe('renderGameDescription sanitising', () => {
   it('keeps loading="lazy" on rendered images', () => {
     const html = renderGameDescription('[img]https://cdn.example.com/a.png[/img]', APPID)
 
-    const img = parse(html).querySelector('img')
+    const img = parseFragment(html).querySelector('img')
     expect(img?.getAttribute('loading')).toBe('lazy')
   })
 
