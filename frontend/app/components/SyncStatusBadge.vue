@@ -46,26 +46,28 @@ const tone = computed(() => {
   display: inline-flex;
   align-items: center;
   padding: 0.2rem 0.55rem;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   font-size: 0.75rem;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
+  font-weight: 700;
+  border: var(--line);
+  background: var(--surface);
+  color: var(--text);
   max-width: 100%;
   word-break: break-word;
 }
 
 .running {
-  border-color: var(--accent-border);
-  color: var(--accent-text);
+  background: var(--warning-tint);
+  color: var(--warning-text);
 }
 
 .complete {
-  border-color: var(--success-border);
+  background: var(--success-tint);
   color: var(--success-text);
 }
 
 .error {
-  border-color: var(--danger-border);
+  background: var(--danger-tint);
   color: var(--danger-text);
 }
 

@@ -239,8 +239,8 @@ onUnmounted(() => {
   width: min(920px, 100%);
   max-height: min(90vh, 960px);
   overflow: auto;
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  border: var(--line-heavy);
   background: var(--surface);
   box-shadow: var(--shadow-modal);
 }
@@ -253,9 +253,10 @@ onUnmounted(() => {
   z-index: 2;
   width: 2rem;
   height: 2rem;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--border);
-  background: var(--overlay-control-bg);
+  border-radius: var(--radius-sm);
+  border: var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
   color: var(--text);
   font-size: 1.25rem;
   line-height: 1;
@@ -285,7 +286,7 @@ onUnmounted(() => {
   overflow-x: auto;
   padding: 0.75rem;
   background: var(--surface-2);
-  border-top: 1px solid var(--border);
+  border-top: var(--line);
 }
 
 .media-thumb {
@@ -294,7 +295,7 @@ onUnmounted(() => {
   width: 112px;
   height: 63px;
   padding: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   border: 2px solid transparent;
   background: transparent;
   cursor: pointer;
@@ -359,10 +360,10 @@ onUnmounted(() => {
   display: inline-block;
   font-size: 0.75rem;
   padding: 0.15rem 0.5rem;
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--muted);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  border: var(--line-thin);
+  color: var(--text);
 }
 
 .tags {
@@ -375,9 +376,6 @@ onUnmounted(() => {
 .tag {
   font-size: 0.75rem;
   padding: 0.2rem 0.55rem;
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
 }
 
 .store-link {
@@ -391,10 +389,9 @@ onUnmounted(() => {
 
 .section h3 {
   margin: 0 0 0.5rem;
-  font-size: 0.9375rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--accent);
 }
 
 .description {
@@ -414,7 +411,7 @@ onUnmounted(() => {
 
 .description :deep(img) {
   max-width: 100%;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
 }
 
 .modal-state {

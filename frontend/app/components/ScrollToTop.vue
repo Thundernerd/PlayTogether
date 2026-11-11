@@ -37,9 +37,5 @@ onUnmounted(() => {
   right: 1.25rem;
   bottom: 1.25rem;
   z-index: 50;
-  border-color: var(--accent-border);
-  background: var(--floating-bg);
-  backdrop-filter: blur(8px);
-  box-shadow: var(--shadow-floating);
 }
 </style>
