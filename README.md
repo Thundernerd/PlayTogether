@@ -48,6 +48,8 @@ npm run dev
 
 Set `BACKEND_URL=http://localhost:8080` if the API runs elsewhere.
 
+Type-check the frontend (including `.vue` files) with `npm run typecheck`; `npm run build` does not type-check.
+
 ## How it works
 
 1. **Create or join a group** using an invite link (no accounts — a browser token identifies you).
