@@ -11,7 +11,7 @@ const {
   vote,
   rate,
   groupBasePath,
-  refreshMemberData,
+  retryListLoads,
 } = group
 const { open: openGameDetail } = useGameDetail()
 </script>
@@ -36,7 +36,7 @@ const { open: openGameDetail } = useGameDetail()
         />
       </div>
       <LoadingMessage v-else-if="sharedLoading">Loading shared games…</LoadingMessage>
-      <ListLoadFailed v-else-if="sharedError" :retrying="sharedLoading" @retry="refreshMemberData">
+      <ListLoadFailed v-else-if="sharedError" :retrying="sharedLoading" @retry="retryListLoads">
         Couldn't load the shared games.
       </ListLoadFailed>
       <p v-else class="muted">

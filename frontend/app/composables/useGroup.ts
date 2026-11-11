@@ -164,6 +164,12 @@ export function useGroup() {
     return inflight.refresh
   }
 
+  // The failed-state retry button. List failures land in their own error state; a failed
+  // group reload only leaves the header stale, so it isn't surfaced as an unhandled rejection.
+  function retryListLoads() {
+    refreshMemberData().catch(() => {})
+  }
+
   async function ensureLoaded(options: { wishlists?: boolean; libraries?: boolean; shared?: boolean } = {}) {
     syncFromStorage()
     loading.value = true
@@ -357,6 +363,7 @@ export function useGroup() {
     error,
     ensureLoaded,
     refreshMemberData,
+    retryListLoads,
     joinGroup,
     leaveGroup,
     deleteGroup,

@@ -22,7 +22,7 @@ const {
   librariesError,
   actionLoading,
   toggleSelection,
-  refreshMemberData,
+  retryListLoads,
 } = group
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
@@ -187,7 +187,7 @@ onUnmounted(stopPolling)
       <ListLoadFailed
         v-else-if="status === 'failed'"
         :retrying="librariesLoading"
-        @retry="refreshMemberData"
+        @retry="retryListLoads"
       >
         Couldn't load your library.
       </ListLoadFailed>

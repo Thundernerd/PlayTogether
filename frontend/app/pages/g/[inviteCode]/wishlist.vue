@@ -17,7 +17,7 @@ const {
   wishlistsError,
   actionLoading,
   toggleSelection,
-  refreshMemberData,
+  retryListLoads,
 } = group
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
@@ -167,7 +167,7 @@ onUnmounted(stopPolling)
       <ListLoadFailed
         v-else-if="status === 'failed'"
         :retrying="wishlistsLoading"
-        @retry="refreshMemberData"
+        @retry="retryListLoads"
       >
         Couldn't load your wishlist.
       </ListLoadFailed>
