@@ -106,7 +106,7 @@ impl SteamClient {
             .map_err(|e| AppError::Steam(format!("GetItems request failed: {e}")))?;
 
         let body: GetItemsResponse = response.json().await?;
-        Ok(store_items_for(appids, body))
+        Ok(store_items_from_response(appids, body))
     }
 
     pub async fn fetch_tag_list(&self) -> AppResult<TagListResponse> {
@@ -136,7 +136,7 @@ impl SteamClient {
             .map_err(|e| AppError::Steam(format!("appdetails request failed: {e}")))?;
 
         let body: HashMap<String, AppDetailsEntry> = response.json().await?;
-        Ok(app_details_for(appid, body))
+        Ok(app_details_from_response(appid, body))
     }
 }
 
@@ -189,7 +189,7 @@ pub struct GetItemsResponseInner {
 /// For delisted or hidden apps Steam answers with an item whose appid is 0
 /// (success 15); keep only items for the appids that were asked for, so
 /// callers see those apps as not returned.
-fn store_items_for(appids: &[u32], body: GetItemsResponse) -> Vec<StoreItem> {
+fn store_items_from_response(appids: &[u32], body: GetItemsResponse) -> Vec<StoreItem> {
     body.response
         .store_items
         .unwrap_or_default()
@@ -391,7 +391,7 @@ pub struct AppReleaseDate {
 
 /// appdetails answers `{"<appid>": {"success": …, "data": …}}`; the data
 /// counts only under the asked-for appid and when `success` is true.
-fn app_details_for(
+fn app_details_from_response(
     appid: u32,
     mut body: HashMap<String, AppDetailsEntry>,
 ) -> Option<AppDetailsData> {
@@ -412,17 +412,20 @@ pub fn derive_is_released_from_app_details(detail: &AppDetailsData) -> Option<bo
 mod tests {
     use super::*;
 
+    fn get_items_body(json: &str) -> GetItemsResponse {
+        serde_json::from_str(json).expect("GetItems fixture parses")
+    }
+
     #[test]
-    fn store_items_for_drops_the_appid_0_item_steam_returns_for_a_hidden_app() {
-        let body: GetItemsResponse = serde_json::from_str(
+    fn get_items_drops_the_appid_0_item_steam_returns_for_a_hidden_app() {
+        let body = get_items_body(
             r#"{"response":{"store_items":[
                 {"item_type":0,"id":620,"success":1,"visible":true,"name":"Portal 2","appid":620,"type":0},
                 {"item_type":0,"id":0,"success":15,"appid":0}
             ]}}"#,
-        )
-        .unwrap();
+        );
 
-        let items = store_items_for(&[620, 1_234_567], body);
+        let items = store_items_from_response(&[620, 1_234_567], body);
 
         let appids: Vec<u32> = items.iter().map(|item| item.appid).collect();
         assert_eq!(appids, vec![620]);
@@ -430,27 +433,26 @@ mod tests {
     }
 
     #[test]
-    fn store_items_for_returns_nothing_when_steam_omits_store_items() {
+    fn get_items_returns_nothing_when_steam_omits_store_items() {
         // Steam's protobuf-backed JSON leaves out empty repeated fields.
-        let body: GetItemsResponse = serde_json::from_str(r#"{"response":{}}"#).unwrap();
+        let body = get_items_body(r#"{"response":{}}"#);
 
-        assert!(store_items_for(&[620], body).is_empty());
+        assert!(store_items_from_response(&[620], body).is_empty());
     }
 
     #[test]
-    fn store_items_for_returns_nothing_for_an_empty_store_items_list() {
-        let body: GetItemsResponse =
-            serde_json::from_str(r#"{"response":{"store_items":[]}}"#).unwrap();
+    fn get_items_returns_nothing_for_an_empty_store_items_list() {
+        let body = get_items_body(r#"{"response":{"store_items":[]}}"#);
 
-        assert!(store_items_for(&[620], body).is_empty());
+        assert!(store_items_from_response(&[620], body).is_empty());
     }
 
     fn app_details_body(json: &str) -> HashMap<String, AppDetailsEntry> {
-        serde_json::from_str(json).unwrap()
+        serde_json::from_str(json).expect("appdetails fixture parses")
     }
 
     #[test]
-    fn app_details_for_returns_the_data_of_a_successful_entry() {
+    fn app_details_returns_the_data_of_a_successful_entry() {
         let body = app_details_body(
             r#"{"620":{"success":true,"data":{
                 "type":"game","name":"Portal 2","steam_appid":620,"required_age":0,"is_free":false,
@@ -458,7 +460,7 @@ mod tests {
             }}}"#,
         );
 
-        let detail = app_details_for(620, body).expect("details for 620");
+        let detail = app_details_from_response(620, body).expect("details for 620");
 
         assert_eq!(detail.name, "Portal 2");
         assert_eq!(detail.steam_appid, 620);
@@ -466,29 +468,29 @@ mod tests {
     }
 
     #[test]
-    fn app_details_for_returns_none_when_steam_reports_no_success() {
+    fn app_details_returns_none_when_steam_reports_no_success() {
         // Steam's answer for an appid it has no store page for.
         let body = app_details_body(r#"{"1234567":{"success":false}}"#);
 
-        assert!(app_details_for(1_234_567, body).is_none());
+        assert!(app_details_from_response(1_234_567, body).is_none());
     }
 
     #[test]
-    fn app_details_for_ignores_data_alongside_success_false() {
+    fn app_details_ignores_data_alongside_success_false() {
         let body = app_details_body(
             r#"{"620":{"success":false,"data":{"name":"Portal 2","steam_appid":620}}}"#,
         );
 
-        assert!(app_details_for(620, body).is_none());
+        assert!(app_details_from_response(620, body).is_none());
     }
 
     #[test]
-    fn app_details_for_returns_none_for_an_envelope_keyed_by_another_appid() {
+    fn app_details_returns_none_for_an_envelope_keyed_by_another_appid() {
         let body = app_details_body(
             r#"{"400":{"success":true,"data":{"name":"Portal","steam_appid":400}}}"#,
         );
 
-        assert!(app_details_for(620, body).is_none());
+        assert!(app_details_from_response(620, body).is_none());
     }
 
     #[test]
@@ -503,8 +505,8 @@ mod tests {
                 "release_date":{"coming_soon":false,"date":"18 Apr, 2011"}}}}"#,
         );
 
-        let unreleased = app_details_for(2000, unreleased).unwrap();
-        let released = app_details_for(620, released).unwrap();
+        let unreleased = app_details_from_response(2000, unreleased).unwrap();
+        let released = app_details_from_response(620, released).unwrap();
 
         assert_eq!(
             derive_is_released_from_app_details(&unreleased),
