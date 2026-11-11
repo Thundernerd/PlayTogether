@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use sqlx::SqlitePool;
 use tracing::info;
 
@@ -10,8 +10,8 @@ use crate::steam::client::{
     AppDetailsData, SteamClient, StoreItem, derive_is_released, derive_is_released_from_app_details,
     store_item_has_details,
 };
-use crate::steam::categories::{play_modes_from_item, store_item_has_categories};
-use crate::steam::pricing::{price_from_store_item, store_item_has_pricing};
+use crate::steam::categories::play_modes_from_item;
+use crate::steam::pricing::price_from_store_item;
 use crate::steam::media_urls::{
     collect_trailers, header_image_url, header_image_url_from_app_details, header_image_url_from_item,
     is_allowed_video_cdn_url, normalize_header_image_url, screenshot_urls_from_item, trailer_entries,
@@ -26,25 +26,8 @@ impl GameCache {
         appids: &[u32],
         ttl_days: i64,
     ) -> AppResult<HashSet<u32>> {
-        if appids.is_empty() {
-            return Ok(HashSet::new());
-        }
-
-        let cutoff = (Utc::now() - Duration::days(ttl_days)).to_rfc3339();
-        let placeholders: Vec<String> = appids.iter().map(|_| "?".to_string()).collect();
-        let query = format!(
-            "SELECT appid FROM steam_games WHERE appid IN ({}) AND fetched_at > ? AND (is_released IS NOT NULL OR raw_json = '{{}}')",
-            placeholders.join(", ")
-        );
-
-        let mut q = sqlx::query_scalar::<_, i64>(&query);
-        for appid in appids {
-            q = q.bind(*appid as i64);
-        }
-        q = q.bind(cutoff);
-
-        let rows = q.fetch_all(db).await?;
-        Ok(rows.into_iter().map(|id| id as u32).collect())
+        let cutoff = Utc::now() - Duration::days(ttl_days);
+        Self::appids_by_fetched_at(db, appids, "fetched_at > ?", cutoff).await
     }
 
     pub async fn get_price_stale_appids(
@@ -52,41 +35,36 @@ impl GameCache {
         appids: &[u32],
         ttl_hours: i64,
     ) -> AppResult<HashSet<u32>> {
+        let cutoff = Utc::now() - Duration::hours(ttl_hours);
+        Self::appids_by_fetched_at(db, appids, "fetched_at <= ?", cutoff).await
+    }
+
+    /// The `appids` with a `steam_games` row whose `fetched_at` matches
+    /// `fetched_at_condition` (one `?`, bound to `cutoff`).
+    async fn appids_by_fetched_at(
+        db: &SqlitePool,
+        appids: &[u32],
+        fetched_at_condition: &str,
+        cutoff: DateTime<Utc>,
+    ) -> AppResult<HashSet<u32>> {
         if appids.is_empty() {
             return Ok(HashSet::new());
         }
 
-        let cutoff = (Utc::now() - Duration::hours(ttl_hours)).to_rfc3339();
         let placeholders: Vec<String> = appids.iter().map(|_| "?".to_string()).collect();
         let query = format!(
-            "SELECT appid, raw_json, fetched_at FROM steam_games WHERE appid IN ({})",
+            "SELECT appid FROM steam_games WHERE appid IN ({}) AND {fetched_at_condition}",
             placeholders.join(", ")
         );
 
-        let mut q = sqlx::query_as::<_, PriceRow>(&query);
+        let mut q = sqlx::query_scalar::<_, i64>(&query);
         for appid in appids {
             q = q.bind(*appid as i64);
         }
+        q = q.bind(cutoff.to_rfc3339());
 
         let rows = q.fetch_all(db).await?;
-        let mut stale = HashSet::new();
-
-        for row in rows {
-            let appid = row.appid as u32;
-            let missing_pricing = match serde_json::from_str::<StoreItem>(&row.raw_json) {
-                Ok(item) => !store_item_has_pricing(&item),
-                Err(_) => true,
-            };
-            let missing_categories = match serde_json::from_str::<StoreItem>(&row.raw_json) {
-                Ok(item) => !store_item_has_categories(&item),
-                Err(_) => true,
-            };
-            if row.fetched_at <= cutoff || missing_pricing || missing_categories {
-                stale.insert(appid);
-            }
-        }
-
-        Ok(stale)
+        Ok(rows.into_iter().map(|id| id as u32).collect())
     }
 
     pub async fn load_game(db: &SqlitePool, appid: u32) -> AppResult<Option<GameInfo>> {
@@ -95,7 +73,8 @@ impl GameCache {
     }
 
     pub async fn ensure_detail_cached(state: &AppState, appid: u32) -> AppResult<()> {
-        if let Some(row) = Self::load_row(&state.db, appid).await? {
+        let row = Self::load_row(&state.db, appid).await?;
+        if let Some(row) = &row {
             if let Ok(item) = serde_json::from_str::<StoreItem>(&row.raw_json) {
                 if store_item_has_details(&item) {
                     return Ok(());
@@ -106,7 +85,8 @@ impl GameCache {
         let client = SteamClient::new(state.http.clone());
         let items = client.fetch_store_item_details(appid).await?;
         if items.is_empty() {
-            return Err(AppError::NotFound);
+            // Steam no longer lists the app; show what the cache already has.
+            return if row.is_some() { Ok(()) } else { Err(AppError::NotFound) };
         }
 
         Self::upsert_items(state, &items).await?;
@@ -278,16 +258,13 @@ impl GameCache {
         }
 
         let mut after_details = Vec::new();
-        for chunk in after_individual.chunks(10) {
-            let details = client.fetch_app_details(chunk).await?;
-            for appid in chunk {
-                if let Some(detail) = details.get(appid) {
-                    Self::upsert_from_app_details(state, *appid, detail).await?;
-                    done += 1;
-                    on_progress(done, total).await;
-                } else {
-                    after_details.push(*appid);
-                }
+        for appid in after_individual {
+            if let Some(detail) = client.fetch_app_details(appid).await? {
+                Self::upsert_from_app_details(state, appid, &detail).await?;
+                done += 1;
+                on_progress(done, total).await;
+            } else {
+                after_details.push(appid);
             }
             tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
         }
@@ -461,22 +438,6 @@ struct GameRow {
     is_released: Option<i64>,
 }
 
-struct PriceRow {
-    appid: i64,
-    raw_json: String,
-    fetched_at: String,
-}
-
-impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for PriceRow {
-    fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
-        Ok(Self {
-            appid: row.try_get("appid")?,
-            raw_json: row.try_get("raw_json")?,
-            fetched_at: row.try_get("fetched_at")?,
-        })
-    }
-}
-
 impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for GameRow {
     fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
         Ok(Self {
@@ -619,3 +580,146 @@ pub async fn load_games_map(
 }
 
 use sqlx::Row;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    const PRICE_TTL_HOURS: i64 = 24;
+    const GAME_TTL_DAYS: i64 = 7;
+
+    const COMING_SOON_WITHOUT_PRICE: u32 = 1001;
+    const WITHOUT_CATEGORIES: u32 = 1002;
+    const STEAM_STUB: u32 = 1003;
+    const UNAVAILABLE: u32 = 1004;
+    const FROM_APP_DETAILS: u32 = 1005;
+    const ALL_FIXTURE_APPIDS: [u32; 5] = [
+        COMING_SOON_WITHOUT_PRICE,
+        WITHOUT_CATEGORIES,
+        STEAM_STUB,
+        UNAVAILABLE,
+        FROM_APP_DETAILS,
+    ];
+
+    async fn test_db() -> SqlitePool {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!("./migrations").run(&db).await.unwrap();
+        db
+    }
+
+    async fn insert_game(
+        db: &SqlitePool,
+        appid: u32,
+        raw_json: &str,
+        is_released: Option<bool>,
+        fetched_at: DateTime<Utc>,
+    ) {
+        sqlx::query(
+            "INSERT INTO steam_games (appid, name, raw_json, is_released, fetched_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(appid as i64)
+        .bind(format!("Steam app {appid}"))
+        .bind(raw_json)
+        .bind(is_released.map(i64::from))
+        .bind(fetched_at.to_rfc3339())
+        .execute(db)
+        .await
+        .unwrap();
+    }
+
+    /// The kinds of row Steam leaves "incomplete" no matter how often we ask.
+    async fn insert_rows_steam_never_completes(db: &SqlitePool, fetched_at: DateTime<Utc>) {
+        insert_game(
+            db,
+            COMING_SOON_WITHOUT_PRICE,
+            &format!(r#"{{"appid":{COMING_SOON_WITHOUT_PRICE},"name":"Soon","is_coming_soon":true,"categories":{{"supported_player_categoryids":[2]}}}}"#),
+            Some(false),
+            fetched_at,
+        )
+        .await;
+        insert_game(
+            db,
+            WITHOUT_CATEGORIES,
+            &format!(r#"{{"appid":{WITHOUT_CATEGORIES},"name":"No modes","is_coming_soon":false,"best_purchase_option":{{"formatted_final_price":"$9.99"}}}}"#),
+            Some(true),
+            fetched_at,
+        )
+        .await;
+        insert_game(
+            db,
+            STEAM_STUB,
+            &format!(r#"{{"appid":{STEAM_STUB},"name":"","is_coming_soon":null,"basic_info":null,"best_purchase_option":null,"categories":null}}"#),
+            None,
+            fetched_at,
+        )
+        .await;
+        insert_game(db, UNAVAILABLE, "{}", None, fetched_at).await;
+        insert_game(
+            db,
+            FROM_APP_DETAILS,
+            &format!(r#"{{"name":"Old detail","steam_appid":{FROM_APP_DETAILS},"short_description":null,"header_image":null,"coming_soon":false}}"#),
+            Some(true),
+            fetched_at,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn recently_fetched_rows_are_not_price_stale_even_when_steam_returned_no_price_or_categories() {
+        let db = test_db().await;
+        insert_rows_steam_never_completes(&db, Utc::now()).await;
+
+        let stale = GameCache::get_price_stale_appids(&db, &ALL_FIXTURE_APPIDS, PRICE_TTL_HOURS)
+            .await
+            .unwrap();
+
+        assert_eq!(stale, HashSet::new());
+    }
+
+    #[tokio::test]
+    async fn recently_fetched_rows_count_as_cached_even_when_release_status_is_unknown() {
+        let db = test_db().await;
+        insert_rows_steam_never_completes(&db, Utc::now()).await;
+
+        let cached = GameCache::get_cached_appids(&db, &ALL_FIXTURE_APPIDS, GAME_TTL_DAYS)
+            .await
+            .unwrap();
+
+        assert_eq!(cached, HashSet::from(ALL_FIXTURE_APPIDS));
+    }
+
+    #[tokio::test]
+    async fn rows_older_than_the_price_ttl_are_price_stale_but_still_cached() {
+        let db = test_db().await;
+        insert_rows_steam_never_completes(&db, Utc::now() - Duration::hours(PRICE_TTL_HOURS + 1))
+            .await;
+
+        let stale = GameCache::get_price_stale_appids(&db, &ALL_FIXTURE_APPIDS, PRICE_TTL_HOURS)
+            .await
+            .unwrap();
+        let cached = GameCache::get_cached_appids(&db, &ALL_FIXTURE_APPIDS, GAME_TTL_DAYS)
+            .await
+            .unwrap();
+
+        assert_eq!(stale, HashSet::from(ALL_FIXTURE_APPIDS));
+        assert_eq!(cached, HashSet::from(ALL_FIXTURE_APPIDS));
+    }
+
+    #[tokio::test]
+    async fn rows_older_than_the_game_ttl_are_not_cached() {
+        let db = test_db().await;
+        insert_rows_steam_never_completes(&db, Utc::now() - Duration::days(GAME_TTL_DAYS + 1))
+            .await;
+
+        let cached = GameCache::get_cached_appids(&db, &ALL_FIXTURE_APPIDS, GAME_TTL_DAYS)
+            .await
+            .unwrap();
+
+        assert_eq!(cached, HashSet::new());
+    }
+}

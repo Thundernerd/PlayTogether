@@ -103,8 +103,17 @@ impl SteamClient {
             .error_for_status()
             .map_err(|e| AppError::Steam(format!("GetItems request failed: {e}")))?;
 
+        // For delisted or hidden apps Steam answers with an item whose appid is 0
+        // (success 15); keep only items for the appids that were asked for, so
+        // callers see those apps as not returned.
         let body: GetItemsResponse = response.json().await?;
-        Ok(body.response.store_items.unwrap_or_default())
+        Ok(body
+            .response
+            .store_items
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|item| appids.contains(&item.appid))
+            .collect())
     }
 
     pub async fn fetch_tag_list(&self) -> AppResult<TagListResponse> {
@@ -120,46 +129,25 @@ impl SteamClient {
         response.json().await.map_err(AppError::from)
     }
 
-    pub async fn fetch_app_details(
-        &self,
-        appids: &[u32],
-    ) -> AppResult<std::collections::HashMap<u32, AppDetailsData>> {
+    /// appdetails rejects a list of appids (400) unless filters=price_overview,
+    /// so this asks for a single app.
+    pub async fn fetch_app_details(&self, appid: u32) -> AppResult<Option<AppDetailsData>> {
         use std::collections::HashMap;
-
-        if appids.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        let ids = appids
-            .iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
 
         let response = self
             .http
             .get(APP_DETAILS_URL)
-            .query(&[("appids", ids), ("filters", String::from("basic"))])
+            .query(&[("appids", appid.to_string()), ("filters", String::from("basic"))])
             .send()
             .await?
             .error_for_status()
             .map_err(|e| AppError::Steam(format!("appdetails request failed: {e}")))?;
 
-        let body: HashMap<String, AppDetailsEntry> = response.json().await?;
-        let mut results = HashMap::new();
-
-        for (key, entry) in body {
-            if !entry.success {
-                continue;
-            }
-            let Some(data) = entry.data else {
-                continue;
-            };
-            let appid = key.parse::<u32>().unwrap_or(data.steam_appid);
-            results.insert(appid, data);
-        }
-
-        Ok(results)
+        let mut body: HashMap<String, AppDetailsEntry> = response.json().await?;
+        Ok(body
+            .remove(&appid.to_string())
+            .filter(|entry| entry.success)
+            .and_then(|entry| entry.data))
     }
 }
 

@@ -41,10 +41,6 @@ fn parse_cents(value: &str) -> Option<i32> {
     value.parse().ok()
 }
 
-pub fn store_item_has_pricing(item: &StoreItem) -> bool {
-    item.best_purchase_option.is_some()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
