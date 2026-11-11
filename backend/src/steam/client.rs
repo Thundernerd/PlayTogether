@@ -123,12 +123,13 @@ impl SteamClient {
     }
 
     /// appdetails rejects a list of appids (400) unless filters=price_overview,
-    /// so this asks for a single app.
+    /// so this asks for a single app. `basic` leaves out release_date, which
+    /// derive_is_released_from_app_details needs, so it is asked for too.
     pub async fn fetch_app_details(&self, appid: u32) -> AppResult<Option<AppDetailsData>> {
         let response = self
             .http
             .get(APP_DETAILS_URL)
-            .query(&[("appids", appid.to_string()), ("filters", String::from("basic"))])
+            .query(&[("appids", appid.to_string()), ("filters", String::from("basic,release_date"))])
             .send()
             .await?
             .error_for_status()
@@ -379,7 +380,13 @@ pub struct AppDetailsData {
     pub steam_appid: u32,
     pub short_description: Option<String>,
     pub header_image: Option<String>,
+    pub release_date: Option<AppReleaseDate>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AppReleaseDate {
     pub coming_soon: Option<bool>,
+    pub date: Option<String>,
 }
 
 /// appdetails answers `{"<appid>": {"success": …, "data": …}}`; the data
@@ -394,13 +401,11 @@ fn app_details_for(
 }
 
 pub fn derive_is_released_from_app_details(detail: &AppDetailsData) -> Option<bool> {
-    if detail.coming_soon == Some(true) {
-        Some(false)
-    } else if detail.coming_soon == Some(false) {
-        Some(true)
-    } else {
-        None
-    }
+    detail
+        .release_date
+        .as_ref()
+        .and_then(|release| release.coming_soon)
+        .map(|coming_soon| !coming_soon)
 }
 
 #[cfg(test)]
@@ -484,5 +489,27 @@ mod tests {
         );
 
         assert!(app_details_for(620, body).is_none());
+    }
+
+    #[test]
+    fn app_details_release_status_comes_from_the_release_date_object() {
+        // appdetails nests coming_soon under release_date (filters=basic,release_date).
+        let unreleased = app_details_body(
+            r#"{"2000":{"success":true,"data":{"name":"Upcoming","steam_appid":2000,
+                "release_date":{"coming_soon":true,"date":"Coming soon"}}}}"#,
+        );
+        let released = app_details_body(
+            r#"{"620":{"success":true,"data":{"name":"Portal 2","steam_appid":620,
+                "release_date":{"coming_soon":false,"date":"18 Apr, 2011"}}}}"#,
+        );
+
+        let unreleased = app_details_for(2000, unreleased).unwrap();
+        let released = app_details_for(620, released).unwrap();
+
+        assert_eq!(
+            derive_is_released_from_app_details(&unreleased),
+            Some(false)
+        );
+        assert_eq!(derive_is_released_from_app_details(&released), Some(true));
     }
 }
