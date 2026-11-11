@@ -125,6 +125,7 @@ function setStars(value: number) {
 }
 
 .thumb {
+  display: block;
   width: 100%;
   aspect-ratio: 460 / 215;
   object-fit: cover;
