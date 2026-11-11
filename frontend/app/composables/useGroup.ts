@@ -29,8 +29,12 @@ export function useGroup() {
   const me = useState<MeResponse | null>('groupMe', () => null)
   // Each list's data, loading flag and error, read through useMemberList(key).
   const lists = useMemberLists()
+  // The first error of a list that never loaded. A failed refresh of a loaded list is left
+  // to the "couldn't refresh" hints, which keep its last count and items on show.
   const listError = computed(
-    () => LIST_KEYS.map((key) => lists.value[key].error).find((e) => e !== null) ?? null,
+    () =>
+      LIST_KEYS.map((key) => lists.value[key])
+        .find((list) => list.error !== null && !list.loaded)?.error ?? null,
   )
 
   const loading = ref(false)
@@ -102,6 +106,7 @@ export function useGroup() {
       .then((data) => {
         if (inflight[key] !== request) return
         list().data = data
+        list().loaded = true
         list().error = null
       })
       .catch((e: unknown) => {
