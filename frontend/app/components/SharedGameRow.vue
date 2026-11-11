@@ -125,6 +125,7 @@ function setStars(value: number) {
 }
 
 .thumb {
+  display: block;
   width: 100%;
   aspect-ratio: 460 / 215;
   object-fit: cover;
@@ -168,8 +169,6 @@ function setStars(value: number) {
 .title-button h3 {
   margin: 0;
   font-size: 1.0625rem;
-  /* Keeps the button's user-agent font, as before --font-heading; see #5. */
-  font-family: inherit;
 }
 
 .title-button:hover h3,

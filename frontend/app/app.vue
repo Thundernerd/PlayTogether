@@ -152,6 +152,11 @@ h1 {
   font-size: 2.25rem;
 }
 
+/* Browsers don't let buttons inherit the page font; make them use it. */
+button {
+  font: inherit;
+}
+
 a {
   color: var(--accent);
   text-decoration: underline;
