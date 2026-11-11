@@ -128,7 +128,8 @@ function setStars(value: number) {
   width: 100%;
   aspect-ratio: 460 / 215;
   object-fit: cover;
-  border-radius: var(--radius-sm);
+  border: var(--line);
+  border-radius: var(--radius-xs);
   background: var(--surface-2);
 }
 
@@ -136,7 +137,7 @@ function setStars(value: number) {
   background: linear-gradient(
     110deg,
     var(--surface-2) 8%,
-    var(--border) 18%,
+    var(--surface) 18%,
     var(--surface-2) 33%
   );
   background-size: 200% 100%;
@@ -210,9 +211,10 @@ function setStars(value: number) {
 .tag {
   font-size: 0.6875rem;
   padding: 0.15rem 0.45rem;
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  border: var(--line-thin);
+  text-transform: lowercase;
 }
 
 .actions {
@@ -229,8 +231,8 @@ function setStars(value: number) {
 }
 
 .vote.active {
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--selected-bg);
+  color: var(--selected-text);
 }
 
 .stars {

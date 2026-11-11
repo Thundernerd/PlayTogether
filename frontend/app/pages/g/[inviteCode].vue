@@ -86,7 +86,7 @@ onUnmounted(() => {
       @delete-group="deleteGroup"
     />
 
-    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="error" class="error-message">{{ error }}</p>
 
     <section v-if="!isMember" class="card join-panel">
       <h2 class="section-title">Join this group</h2>
@@ -116,11 +116,6 @@ onUnmounted(() => {
 .loading,
 .error-block {
   color: var(--muted);
-}
-
-.error {
-  color: var(--danger-text);
-  margin: 0;
 }
 
 .join-panel {

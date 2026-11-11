@@ -90,10 +90,10 @@ const emit = defineEmits<{
   margin-left: 0.75rem;
   font-size: 0.8125rem;
   padding: 0.25rem 0.5rem;
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-danger {
-  border-color: var(--danger-border);
   color: var(--danger-text);
   white-space: nowrap;
 }
@@ -106,7 +106,6 @@ const emit = defineEmits<{
 }
 
 .btn-danger:hover:not(:disabled) {
-  border-color: var(--danger);
   background: var(--danger-tint);
 }
 </style>

@@ -71,24 +71,28 @@ function isActive(link: { to: string; exact?: boolean }) {
   align-items: center;
   gap: 0.4rem;
   padding: 0.45rem 0.85rem;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--muted);
+  border-radius: var(--radius-sm);
+  border: var(--line);
+  background: var(--surface);
+  color: var(--ink);
   font-size: 0.875rem;
+  font-weight: 700;
   text-decoration: none;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition: color 0.15s, background 0.15s;
 }
 
 .nav-link:hover {
-  border-color: var(--accent);
-  color: var(--text);
+  background: var(--highlight);
 }
 
 .nav-link.active {
-  border-color: var(--active-border);
-  background: var(--active-bg);
-  color: var(--active-text);
+  background: var(--selected-bg);
+  color: var(--selected-text);
+}
+
+.nav-link:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .count {
@@ -101,6 +105,10 @@ function isActive(link: { to: string; exact?: boolean }) {
   padding: 0.05rem 0.4rem;
   border-radius: var(--radius-pill);
   background: var(--surface-2);
-  color: var(--text);
+  color: var(--ink);
+}
+
+.nav-link.active .count {
+  background: var(--highlight);
 }
 </style>

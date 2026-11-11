@@ -60,7 +60,7 @@ async function joinGroup() {
       </p>
     </section>
 
-    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="error" class="error-message">{{ error }}</p>
 
     <div class="panels">
       <section class="card panel">
@@ -129,10 +129,5 @@ async function joinGroup() {
 .panel {
   display: flex;
   flex-direction: column;
-}
-
-.error {
-  color: var(--danger-text);
-  margin: 0;
 }
 </style>

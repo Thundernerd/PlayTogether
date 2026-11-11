@@ -129,11 +129,16 @@ watch(
   gap: 0.35rem;
   text-decoration: none;
   color: inherit;
-  transition: border-color 0.15s;
+  transition: background 0.15s;
 }
 
 .quick-link:hover {
-  border-color: var(--accent);
+  background: var(--highlight-tint);
+}
+
+.quick-link:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .quick-link strong {
