@@ -40,6 +40,8 @@ describe('useGroup retryListLoads (Try again)', () => {
     api.mockReset()
     api.mockResolvedValue([])
     signInAsMember()
+    // The failed-state retry button only shows inside a loaded group.
+    useState('groupDetail').value = { group: { name: 'G' }, members: [{}] }
     useMemberLists().value = emptyMemberLists()
   })
 
@@ -113,7 +115,6 @@ describe('useGroup retryListLoads (Try again)', () => {
 
   it('writes nothing and reloads nothing when the member leaves while the joined request fails', async () => {
     vi.stubGlobal('confirm', () => true)
-    useState('groupDetail').value = { group: { name: 'G' }, members: [{}] }
     const doomed = deferred<never>()
     api.mockImplementation((url: string) =>
       isLibraries(url) ? doomed.promise : Promise.resolve([]),
@@ -174,6 +175,7 @@ describe('useGroup leaving while a refresh is in flight', () => {
     const stalePoll = group.refreshMemberData()
     await group.leaveGroup()
     signInAsMember()
+    useState('groupDetail').value = staleGroup
     const groupCallsBefore = groupCalls()
     const librariesBefore = librariesCalls()
     const newRefresh = group.refreshMemberData()
@@ -198,6 +200,7 @@ describe('useGroup leaving while a refresh is in flight', () => {
     const stalePoll = group.refreshMemberData()
     await group.leaveGroup()
     signInAsMember()
+    useState('groupDetail').value = staleGroup
     const newRefresh = group.refreshMemberData()
     oldGroup.resolve(staleGroup)
     await stalePoll
@@ -256,6 +259,28 @@ describe('useGroup leaving before its navigation finishes', () => {
       expect(group.groupDetail.value).toBeNull()
     },
   )
+
+  it('does not overwrite the next group opened before that refresh settles', async () => {
+    const navigation = holdNavigation()
+    const pendingGroup = deferred<typeof leftGroup>()
+    api.mockImplementation((url: string) =>
+      isGroup(url) ? pendingGroup.promise : Promise.resolve([]),
+    )
+    const group = useGroup()
+    const nextGroup = { group: { name: 'Next group' }, members: [{}] }
+
+    const leaving = group.leaveGroup()
+    await navigation.reached()
+    const poll = group.refreshMemberData()
+    navigation.finish()
+    await leaving
+    // The next group's ensureLoaded() fills the header.
+    useState('groupDetail').value = nextGroup
+    pendingGroup.resolve(leftGroup)
+    await poll
+
+    expect(group.groupDetail.value).toEqual(nextGroup)
+  })
 })
 
 describe('useGroup refreshing as a non-member', () => {
