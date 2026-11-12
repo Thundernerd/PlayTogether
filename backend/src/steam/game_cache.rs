@@ -1253,10 +1253,11 @@ mod tests {
         assert_eq!(steam.calls(), 2);
     }
 
+    const ALSO_ONLY_IN_APP_DETAILS: u32 = 2005;
+    const UNKNOWN_TO_STEAM: u32 = 2006;
+
     #[tokio::test]
     async fn a_rate_limited_appdetails_call_fails_the_apps_not_asked_for_yet() {
-        const ALSO_ONLY_IN_APP_DETAILS: u32 = 2005;
-        const UNKNOWN_TO_STEAM: u32 = 2006;
         let state = test_state(test_db().await);
         let steam = FakeSteam::new()
             .with_store_item(LISTED, "Listed")
