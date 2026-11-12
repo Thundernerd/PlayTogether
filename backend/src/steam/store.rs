@@ -122,7 +122,7 @@ pub mod fake {
         }
 
         /// Every `GetItems` call fails the way Steam answers with HTTP 429.
-        pub fn rate_limited(mut self) -> Self {
+        pub fn rate_limiting_every_store_items_call(mut self) -> Self {
             self.rate_limited = true;
             self
         }

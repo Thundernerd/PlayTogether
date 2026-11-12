@@ -1143,7 +1143,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn one_app_steam_keeps_failing_for_does_not_hold_back_the_rest_of_its_chunk() {
+    async fn an_app_steam_keeps_failing_for_does_not_hold_back_the_rest_of_its_chunk() {
         let state = test_state(test_db().await);
         let steam = FakeSteam::new()
             .with_store_item(LISTED, "Listed")
@@ -1172,7 +1172,7 @@ mod tests {
         let steam = FakeSteam::new()
             .with_store_item(LISTED, "Listed")
             .with_app_details(ONLY_IN_APP_DETAILS, "Details only")
-            .rate_limited();
+            .rate_limiting_every_store_items_call();
 
         let failed = fetch_missing(&state, &steam, &[LISTED, ONLY_IN_APP_DETAILS])
             .await
