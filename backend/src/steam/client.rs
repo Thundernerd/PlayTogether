@@ -139,15 +139,15 @@ impl SteamClient {
 /// Turns an HTTP error status from Steam into an error: HTTP 429 into
 /// `AppError::SteamRateLimited`, so callers can stop sending requests, and
 /// any other error status into `AppError::Steam`.
-fn check_status(response: reqwest::Response, request: &str) -> AppResult<reqwest::Response> {
+fn check_status(response: reqwest::Response, request_name: &str) -> AppResult<reqwest::Response> {
     if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
         return Err(AppError::SteamRateLimited(format!(
-            "{request} request was rate limited (HTTP 429)"
+            "{request_name} request was rate limited (HTTP 429)"
         )));
     }
     response
         .error_for_status()
-        .map_err(|e| AppError::Steam(format!("{request} request failed: {e}")))
+        .map_err(|e| AppError::Steam(format!("{request_name} request failed: {e}")))
 }
 
 #[derive(Debug, Deserialize)]
