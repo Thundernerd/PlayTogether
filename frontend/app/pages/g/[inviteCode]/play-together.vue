@@ -49,7 +49,6 @@ const status = computed(() =>
       <MemberListStatus
         v-else
         :status="status"
-        :retrying="sharedLoading"
         loading-text="Loading shared games…"
         failed-text="Couldn't load the shared games."
         @retry="retryListLoads"

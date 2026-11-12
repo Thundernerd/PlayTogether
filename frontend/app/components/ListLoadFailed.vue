@@ -1,8 +1,7 @@
 <script setup lang="ts">
-defineProps<{
-  retrying?: boolean
-}>()
-
+// A list that never loaded: stands in for its items. Try again stays enabled while a request is
+// in flight: a sync polls every 2s, so tying it to the loading flag would flicker it, and a
+// click mid-request just joins that request.
 defineEmits<{
   retry: []
 }>()
@@ -11,7 +10,7 @@ defineEmits<{
 <template>
   <div class="list-load-failed">
     <p class="error-message"><slot /></p>
-    <button class="btn" type="button" :disabled="retrying" @click="$emit('retry')">
+    <button class="btn" type="button" @click="$emit('retry')">
       Try again
     </button>
   </div>

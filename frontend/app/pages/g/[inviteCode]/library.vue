@@ -194,7 +194,6 @@ onUnmounted(stopPolling)
       <MemberListStatus
         v-else
         :status="status"
-        :retrying="librariesLoading"
         loading-text="Loading your library…"
         failed-text="Couldn't load your library."
         syncing-text="Syncing your library from Steam…"
