@@ -38,6 +38,8 @@ Environment variables (optional):
 
 If you have an existing `playwishlist.db` from a previous install, rename it to `playtogether.db` or set `DATABASE_URL=sqlite:playwishlist.db?mode=rwc`.
 
+CI fails if the backend isn't `rustfmt`-clean: run `cargo fmt` in `backend/` before pushing (`cargo fmt --check` reports drift without changing files).
+
 ### Frontend (port 3000)
 
 ```bash
@@ -52,11 +54,19 @@ Type-check the frontend (including `.vue` files) with `npm run typecheck`; `npm 
 
 Run the frontend unit tests (Vitest, under `frontend/test/`) with `npm run test`.
 
+`frontend/.nvmrc` is the source of truth for the frontend's Node major. `nvm use` reads it, and so does the "Frontend checks" workflow. To change the major, edit:
+
+- `frontend/.nvmrc`
+- the `NODE_VERSION` build arg default in `frontend/Dockerfile`
+- the `node:<major>-alpine` image tag in `docker-compose.dev.yml` (compose can't read `.nvmrc`)
+
+The minimum supported version is `engines.node` in `frontend/package.json`; if it changes, update the prerequisite above too.
+
 ## How it works
 
 1. **Create or join a group** using an invite link (no accounts — a browser token identifies you).
 2. **Add your Steam ID64** — the backend fetches your public wishlist and owned games from Steam.
-3. **Game metadata** is fetched in chunks and stored in SQLite (`steam_games`). Cached data is reused across all members and groups for 7 days (prices for 24 hours). Games with no cached row are fetched before a list loads; rows past either TTL are served from the cache and refreshed in the background.
+3. **Game metadata** is fetched in chunks and stored in SQLite (`steam_games`). Cached data is reused across all members and groups for 7 days (prices for 24 hours). Games with no cached row are fetched before a list loads; rows past either TTL are served from the cache and refreshed in the background. A game Steam fails for is not fetched again for 15 minutes, and a game with no cached row is left out of the lists until then.
 4. **Check games** you want to play together on your wishlist or library cards.
 5. **Vote and rate** games in the shared “Play together” list.
 

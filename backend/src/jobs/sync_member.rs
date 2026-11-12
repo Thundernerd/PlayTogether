@@ -19,7 +19,10 @@ pub async fn spawn_member_sync(state: AppState, member_id: Uuid, steam_id: u64) 
                 return;
             }
             tracing::error!(%member_id, error = %e, "member sync failed");
-            if db::member_exists(&task_state.db, member_id).await.unwrap_or(false) {
+            if db::member_exists(&task_state.db, member_id)
+                .await
+                .unwrap_or(false)
+            {
                 let _ = db::upsert_sync_job(
                     &task_state.db,
                     member_id,
@@ -161,31 +164,20 @@ async fn run_sync(state: &AppState, member_id: Uuid, steam_id: u64) -> AppResult
 
     ensure_member_active(state, member_id).await?;
 
-    db::upsert_sync_job(
-        &state.db,
-        member_id,
-        "complete",
-        None,
-        0,
-        0,
-        None,
-    )
-    .await?;
+    db::upsert_sync_job(&state.db, member_id, "complete", None, 0, 0, None).await?;
 
     Ok(())
 }
 
 pub async fn trigger_sync(state: &AppState, member_id: Uuid) -> AppResult<()> {
-    let row = sqlx::query_scalar::<_, Option<i64>>(
-        "SELECT steam_id FROM members WHERE id = ?",
-    )
-    .bind(member_id.to_string())
-    .fetch_one(&state.db)
-    .await?;
+    let row = sqlx::query_scalar::<_, Option<i64>>("SELECT steam_id FROM members WHERE id = ?")
+        .bind(member_id.to_string())
+        .fetch_one(&state.db)
+        .await?;
 
-    let steam_id = row.ok_or_else(|| {
-        AppError::BadRequest("steam_id must be set before syncing".into())
-    })? as u64;
+    let steam_id = row
+        .ok_or_else(|| AppError::BadRequest("steam_id must be set before syncing".into()))?
+        as u64;
 
     let status = db::get_sync_status(&state.db, member_id).await?;
     if matches!(status.status, crate::models::SyncJobStatus::Running) {

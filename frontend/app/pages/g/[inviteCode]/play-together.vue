@@ -6,14 +6,15 @@ const group = useGroup()
 const { actionLoading, vote, rate, groupBasePath, retryListLoads } = group
 const {
   data: sharedGames,
+  loaded: sharedLoaded,
   loading: sharedLoading,
   error: sharedError,
-  loaded: sharedLoaded,
+  refreshFailed: sharedRefreshFailed,
 } = useMemberList('shared')
 const { open: openGameDetail } = useGameDetail()
 
-// No sync behind this list. Only the first load shows 'loading', so poll, vote and rate
-// refreshes keep the current text instead of flashing the spinner.
+// No sync behind this list, so no items once it has loaded is 'empty'. Only the first load
+// shows 'loading', so poll, vote and rate refreshes keep the current text.
 const status = computed(() =>
   listStatus({
     itemCount: sharedGames.value.length,
@@ -31,6 +32,8 @@ const status = computed(() =>
       <p class="section-subtitle">
         Games someone wants to play — vote and rate to help the group decide what to play next.
       </p>
+
+      <ListRefreshFailed v-if="sharedRefreshFailed" @retry="retryListLoads" />
 
       <div v-if="status === 'items'" class="shared-list">
         <SharedGameRow

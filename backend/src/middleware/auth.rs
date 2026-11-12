@@ -1,6 +1,6 @@
 use axum::{
     extract::FromRequestParts,
-    http::{HeaderMap, request::Parts},
+    http::{request::Parts, HeaderMap},
 };
 
 use crate::db;
