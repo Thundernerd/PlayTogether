@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MeResponse } from '~/types/api'
 
 // useApi() calls the global $fetch with the API base prefixed; stub it there.
@@ -18,6 +18,18 @@ function deferred<T>() {
     reject = rej
   })
   return { promise, resolve, reject }
+}
+
+// A group the member is about to leave (or has left).
+const leftGroup = { group: { name: 'Left group' }, members: [{}] }
+
+// Holds the group request open; every other request resolves at once.
+function holdGroupRequest() {
+  const pendingGroup = deferred<typeof leftGroup>()
+  api.mockImplementation((url: string) =>
+    isGroup(url) ? pendingGroup.promise : Promise.resolve([]),
+  )
+  return pendingGroup
 }
 
 function librariesCalls() {
@@ -40,6 +52,8 @@ describe('useGroup retryListLoads (Try again)', () => {
     api.mockReset()
     api.mockResolvedValue([])
     signInAsMember()
+    // The failed-state retry button only shows inside a loaded group.
+    useState('groupDetail').value = { group: { name: 'G' }, members: [{}] }
     useMemberLists().value = emptyMemberLists()
   })
 
@@ -113,7 +127,6 @@ describe('useGroup retryListLoads (Try again)', () => {
 
   it('writes nothing and reloads nothing when the member leaves while the joined request fails', async () => {
     vi.stubGlobal('confirm', () => true)
-    useState('groupDetail').value = { group: { name: 'G' }, members: [{}] }
     const doomed = deferred<never>()
     api.mockImplementation((url: string) =>
       isLibraries(url) ? doomed.promise : Promise.resolve([]),
@@ -133,22 +146,12 @@ describe('useGroup retryListLoads (Try again)', () => {
 })
 
 describe('useGroup leaving while a refresh is in flight', () => {
-  const staleGroup = { group: { name: 'Left group' }, members: [{}] }
-
-  function holdGroupRequest() {
-    const pendingGroup = deferred<typeof staleGroup>()
-    api.mockImplementation((url: string) =>
-      isGroup(url) ? pendingGroup.promise : Promise.resolve([]),
-    )
-    return pendingGroup
-  }
-
   beforeEach(() => {
     api.mockReset()
     api.mockResolvedValue([])
     vi.stubGlobal('confirm', () => true)
     signInAsMember()
-    useState('groupDetail').value = staleGroup
+    useState('groupDetail').value = leftGroup
     useMemberLists().value = emptyMemberLists()
   })
 
@@ -160,7 +163,7 @@ describe('useGroup leaving while a refresh is in flight', () => {
 
       const poll = group.refreshMemberData()
       await group[action]()
-      pendingGroup.resolve(staleGroup)
+      pendingGroup.resolve(leftGroup)
       await poll
 
       expect(group.groupDetail.value).toBeNull()
@@ -174,20 +177,21 @@ describe('useGroup leaving while a refresh is in flight', () => {
     const stalePoll = group.refreshMemberData()
     await group.leaveGroup()
     signInAsMember()
+    useState('groupDetail').value = leftGroup
     const groupCallsBefore = groupCalls()
     const librariesBefore = librariesCalls()
     const newRefresh = group.refreshMemberData()
 
     expect(groupCalls()).toBe(groupCallsBefore + 1)
     expect(librariesCalls()).toBe(librariesBefore + 1)
-    pendingGroup.resolve(staleGroup)
+    pendingGroup.resolve(leftGroup)
     await stalePoll
     await newRefresh
   })
 
   it('lets a poll join the new refresh even after the old one settles', async () => {
-    const oldGroup = deferred<typeof staleGroup>()
-    const newGroup = deferred<typeof staleGroup>()
+    const oldGroup = deferred<typeof leftGroup>()
+    const newGroup = deferred<typeof leftGroup>()
     let groupRequests = 0
     api.mockImplementation((url: string) => {
       if (!isGroup(url)) return Promise.resolve([])
@@ -198,14 +202,137 @@ describe('useGroup leaving while a refresh is in flight', () => {
     const stalePoll = group.refreshMemberData()
     await group.leaveGroup()
     signInAsMember()
+    useState('groupDetail').value = leftGroup
     const newRefresh = group.refreshMemberData()
-    oldGroup.resolve(staleGroup)
+    oldGroup.resolve(leftGroup)
     await stalePoll
     const joinedPoll = group.refreshMemberData()
 
     expect(groupRequests).toBe(2)
-    newGroup.resolve(staleGroup)
+    newGroup.resolve(leftGroup)
     await newRefresh
     await joinedPoll
   })
+})
+
+describe('useGroup leaving before its navigation finishes', () => {
+  beforeEach(() => {
+    api.mockReset()
+    api.mockResolvedValue([])
+    vi.stubGlobal('confirm', () => true)
+    signInAsMember()
+    useState('groupDetail').value = leftGroup
+    useMemberLists().value = emptyMemberLists()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function holdNavigation() {
+    const navigation = deferred<undefined>()
+    const push = vi.spyOn(useRouter(), 'push').mockReturnValue(navigation.promise)
+    return {
+      // Waits until the action has reset the group and is awaiting the navigation.
+      reached: () => vi.waitFor(() => expect(push).toHaveBeenCalled()),
+      finish: () => navigation.resolve(undefined),
+    }
+  }
+
+  it.each(['leaveGroup', 'deleteGroup'] as const)(
+    'does not write the group back from a refresh started while %s navigates away',
+    async (action) => {
+      const navigation = holdNavigation()
+      const pendingGroup = holdGroupRequest()
+      const group = useGroup()
+
+      const leaving = group[action]()
+      await navigation.reached()
+      const poll = group.refreshMemberData()
+      pendingGroup.resolve(leftGroup)
+      await poll
+      navigation.finish()
+      await leaving
+
+      expect(group.groupDetail.value).toBeNull()
+    },
+  )
+
+  it('does not overwrite the next group opened before that refresh settles', async () => {
+    const navigation = holdNavigation()
+    const pendingGroup = holdGroupRequest()
+    const group = useGroup()
+    const nextGroup = { group: { name: 'Next group' }, members: [{}] }
+
+    const leaving = group.leaveGroup()
+    await navigation.reached()
+    const poll = group.refreshMemberData()
+    navigation.finish()
+    await leaving
+    // The next group's ensureLoaded() fills the header.
+    useState('groupDetail').value = nextGroup
+    pendingGroup.resolve(leftGroup)
+    await poll
+
+    expect(group.groupDetail.value).toEqual(nextGroup)
+  })
+})
+
+describe('useGroup refreshing as a non-member', () => {
+  beforeEach(() => {
+    api.mockReset()
+    useState('groupMe').value = null
+    useState('groupDetail').value = { group: { name: 'Before' }, members: [] }
+    useMemberLists().value = emptyMemberLists()
+  })
+
+  it('updates the shown group', async () => {
+    const synced = { group: { name: 'After' }, members: [] }
+    api.mockImplementation((url: string) =>
+      isGroup(url) ? Promise.resolve(synced) : Promise.resolve([]),
+    )
+    const group = useGroup()
+
+    await group.refreshMemberData()
+
+    expect(group.groupDetail.value).toEqual(synced)
+  })
+})
+
+describe('useGroup leaving while the initial load is in flight', () => {
+  beforeEach(() => {
+    api.mockReset()
+    vi.stubGlobal('confirm', () => true)
+    useMemberLists().value = emptyMemberLists()
+    useState('groupDetail').value = null
+    useState('groupMe').value = null
+    useMemberToken().setToken('member-token')
+  })
+
+  it.each(['leaveGroup', 'deleteGroup'] as const)(
+    'does not write the group or member back when the load settles after %s',
+    async (action) => {
+      const pendingGroup = deferred<typeof leftGroup>()
+      const pendingMe = deferred<MeResponse>()
+      api.mockImplementation((url: string, options?: { method?: string }) => {
+        if (isGroup(url)) return pendingGroup.promise
+        if (url.endsWith('/api/members/me') && !options?.method) return pendingMe.promise
+        return Promise.resolve([])
+      })
+      const group = useGroup()
+
+      const load = group.ensureLoaded()
+      // Another load (the layout's or the page's) fills the group first, so the member can leave.
+      useState('groupDetail').value = leftGroup
+      signInAsMember()
+      const member = group.me.value!
+      await group[action]()
+      pendingGroup.resolve(leftGroup)
+      pendingMe.resolve(member)
+      await load
+
+      expect(group.groupDetail.value).toBeNull()
+      expect(group.me.value).toBeNull()
+    },
+  )
 })
