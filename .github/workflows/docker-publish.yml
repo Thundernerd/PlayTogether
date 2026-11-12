@@ -19,7 +19,6 @@ on:
 
 env:
   DOCKERHUB_USERNAME: tnrd
-  IMAGE_PREFIX: tnrd/playtogether-
   # docker/metadata-action tag rules, shared by both jobs so the per-platform
   # image labels (e.g. org.opencontainers.image.version) match the published tags.
   IMAGE_TAGS: |
@@ -32,6 +31,8 @@ env:
 jobs:
   build:
     runs-on: ${{ matrix.runner }}
+    env:
+      IMAGE: tnrd/playtogether-${{ matrix.context }}
     strategy:
       fail-fast: false
       matrix:
@@ -62,7 +63,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_PREFIX }}${{ matrix.context }}
+          images: ${{ env.IMAGE }}
           tags: ${{ env.IMAGE_TAGS }}
 
       - name: Build and push by digest
@@ -72,7 +73,7 @@ jobs:
           context: ./${{ matrix.context }}
           platforms: linux/${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ env.IMAGE_PREFIX }}${{ matrix.context }}
+          tags: ${{ env.IMAGE }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
           cache-from: type=gha,scope=${{ matrix.context }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.context }}-${{ matrix.arch }}
@@ -98,6 +99,8 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    env:
+      IMAGE: tnrd/playtogether-${{ matrix.context }}
     strategy:
       fail-fast: false
       matrix:
@@ -124,13 +127,11 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_PREFIX }}${{ matrix.context }}
+          images: ${{ env.IMAGE }}
           tags: ${{ env.IMAGE_TAGS }}
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
-        env:
-          IMAGE: ${{ env.IMAGE_PREFIX }}${{ matrix.context }}
         run: |
           mapfile -t tag_args < <(jq -r '.tags[] | "-t", .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           sources=()
@@ -139,6 +140,5 @@ jobs:
 
       - name: Inspect image
         env:
-          IMAGE: ${{ env.IMAGE_PREFIX }}${{ matrix.context }}
           VERSION: ${{ steps.meta.outputs.version }}
         run: docker buildx imagetools inspect "$IMAGE:$VERSION"
