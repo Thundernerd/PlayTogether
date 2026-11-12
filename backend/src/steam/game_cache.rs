@@ -297,7 +297,7 @@ impl GameCache {
 
     /// Fetches the `appids` that are due from Steam and caches them. Apps
     /// Steam fails for keep the row they had; returns their appids. When a
-    /// chunk request fails, every app in the chunk counts as failed.
+    /// chunk request fails, its apps are asked for one at a time.
     pub async fn fetch_missing<F, Fut>(
         state: &AppState,
         client: &impl SteamStore,
@@ -346,6 +346,10 @@ impl GameCache {
                             still_missing.push(*appid);
                         }
                     }
+                }
+                Err(error) if chunk.len() > 1 => {
+                    warn!(?chunk, %error, "Steam GetItems failed for chunk; retrying its apps one at a time");
+                    still_missing.extend_from_slice(chunk);
                 }
                 Err(error) => {
                     warn!(?chunk, %error, "Steam GetItems failed for chunk; leaving it for the next fetch");
@@ -1128,6 +1132,30 @@ mod tests {
             stored_name(&state.db, LISTED).await.as_deref(),
             Some("Listed")
         );
+    }
+
+    #[tokio::test]
+    async fn one_app_steam_keeps_failing_for_does_not_hold_back_the_rest_of_its_chunk() {
+        let state = test_state(test_db().await);
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .with_app_details(ONLY_IN_APP_DETAILS, "Details only")
+            .failing_every_call_for(FAILING);
+
+        let failed = fetch_missing(&state, &steam, &[LISTED, FAILING, ONLY_IN_APP_DETAILS])
+            .await
+            .unwrap();
+
+        assert_eq!(failed, vec![FAILING]);
+        assert_eq!(
+            stored_name(&state.db, LISTED).await.as_deref(),
+            Some("Listed")
+        );
+        assert_eq!(
+            stored_name(&state.db, ONLY_IN_APP_DETAILS).await.as_deref(),
+            Some("Details only")
+        );
+        assert_eq!(stored_raw_json(&state.db, FAILING).await, None);
     }
 
     const STALE: u32 = 3001;
