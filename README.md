@@ -6,6 +6,7 @@ Compare Steam wishlists with friends, mark games you want to play together, and 
 
 - Rust (stable)
 - Node.js 22.18+ (or 24.11+)
+- npm as pinned in `frontend/package.json`'s `packageManager` field (see [Frontend](#frontend-port-3000))
 - Steam profiles with **public** wishlists and **public game details** (required for sync)
 - A [Steam Web API key](https://steamcommunity.com/dev/apikey) (required for owned-games library sync)
 
@@ -49,6 +50,12 @@ npm run dev
 ```
 
 Set `BACKEND_URL=http://localhost:8080` if the API runs elsewhere.
+
+`frontend/package-lock.json` is written by the npm pinned in `frontend/package.json`'s `packageManager` field, and CI and the Docker build install that same npm before `npm ci`. Other npm versions (such as npm 10, bundled with Node 22) resolve the lockfile differently and break `npm ci`, so install the pinned npm before changing dependencies. Run this from `frontend/`:
+
+```bash
+npm install -g "$(node -p "require('./package.json').packageManager")"
+```
 
 Type-check the frontend (including `.vue` files) with `npm run typecheck`; `npm run build` does not type-check.
 

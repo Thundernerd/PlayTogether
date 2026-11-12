@@ -8,7 +8,9 @@ FROM node:${NODE_VERSION}-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# Use the npm pinned in package.json's packageManager, the one that writes the lockfile.
+RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
+    && npm ci
 
 COPY . .
 RUN npm run build
