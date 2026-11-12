@@ -342,7 +342,9 @@ impl GameCache {
 
     /// Fetches the `appids` that are due from Steam and caches them. Apps
     /// Steam fails for keep the row they had; returns their appids. When a
-    /// chunk request fails, every app in the chunk counts as failed.
+    /// chunk request fails, its apps are asked for one at a time, unless Steam
+    /// rate limited it: then every app in the chunk counts as failed. A rate
+    /// limit while asking one at a time fails the apps not asked for yet.
     pub async fn fetch_missing<F, Fut>(
         state: &AppState,
         client: &impl SteamStore,
@@ -392,6 +394,10 @@ impl GameCache {
                         }
                     }
                 }
+                Err(error) if chunk.len() > 1 && !error.is_rate_limit() => {
+                    warn!(?chunk, %error, "Steam GetItems failed for chunk; retrying its apps one at a time");
+                    still_missing.extend_from_slice(chunk);
+                }
                 Err(error) => {
                     warn!(?chunk, %error, "Steam GetItems failed for chunk; leaving it for the next fetch");
                     progress.record_failed(chunk).await;
@@ -404,7 +410,7 @@ impl GameCache {
         }
 
         let mut after_individual = Vec::new();
-        for appid in still_missing {
+        for (index, &appid) in still_missing.iter().enumerate() {
             match client.fetch_store_items(&[appid]).await {
                 Ok(items) => {
                     let items = Self::requested_items(&[appid], items);
@@ -414,6 +420,12 @@ impl GameCache {
                         Self::upsert_items(state, &items).await?;
                         progress.record_fetched(1).await;
                     }
+                }
+                Err(error) if error.is_rate_limit() => {
+                    let not_asked = &still_missing[index..];
+                    warn!(?not_asked, %error, "Steam GetItems rate limited; leaving the remaining apps for the next fetch");
+                    progress.record_failed(not_asked).await;
+                    break;
                 }
                 Err(error) => {
                     warn!(appid, %error, "Steam GetItems failed for app; leaving it for the next fetch");
@@ -1175,6 +1187,64 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn an_app_steam_keeps_failing_for_does_not_hold_back_the_rest_of_its_chunk() {
+        let state = test_state(test_db().await);
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .with_app_details(ONLY_IN_APP_DETAILS, "Details only")
+            .failing_every_call_for(FAILING);
+
+        let failed = fetch_missing(&state, &steam, &[LISTED, FAILING, ONLY_IN_APP_DETAILS])
+            .await
+            .unwrap();
+
+        assert_eq!(failed, vec![FAILING]);
+        assert_eq!(
+            stored_name(&state.db, LISTED).await.as_deref(),
+            Some("Listed")
+        );
+        assert_eq!(
+            stored_name(&state.db, ONLY_IN_APP_DETAILS).await.as_deref(),
+            Some("Details only")
+        );
+        assert_eq!(stored_raw_json(&state.db, FAILING).await, None);
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_chunk_fails_every_app_in_it_without_asking_for_them_one_at_a_time() {
+        let state = test_state(test_db().await);
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .with_app_details(ONLY_IN_APP_DETAILS, "Details only")
+            .rate_limiting_every_store_items_call();
+
+        let failed = fetch_missing(&state, &steam, &[LISTED, ONLY_IN_APP_DETAILS])
+            .await
+            .unwrap();
+
+        assert_eq!(failed, vec![LISTED, ONLY_IN_APP_DETAILS]);
+        assert_eq!(steam.calls(), 1);
+        assert_eq!(stored_raw_json(&state.db, LISTED).await, None);
+    }
+
+    #[tokio::test]
+    async fn a_rate_limit_while_retrying_a_failed_chunk_fails_the_apps_not_asked_for_yet() {
+        let state = test_state(test_db().await);
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .with_app_details(ONLY_IN_APP_DETAILS, "Details only")
+            .failing_every_call_for(FAILING)
+            .rate_limiting_store_items_calls_for_one_app();
+
+        let failed = fetch_missing(&state, &steam, &[LISTED, FAILING, ONLY_IN_APP_DETAILS])
+            .await
+            .unwrap();
+
+        assert_eq!(failed, vec![LISTED, FAILING, ONLY_IN_APP_DETAILS]);
+        assert_eq!(steam.calls(), 2);
+    }
+
     const STALE: u32 = 3001;
     const STALE_RAW_JSON: &str = r#"{"appid":3001,"name":"Old name"}"#;
 
@@ -1514,6 +1584,34 @@ mod tests {
             stored_name(&state.db, UNCACHED).await.as_deref(),
             Some("Uncached")
         );
+    }
+
+    #[tokio::test]
+    async fn overlapping_list_loads_retry_a_failed_chunk_one_app_at_a_time_once() {
+        let state = test_state(test_db().await);
+        let (steam, gate) = FakeSteam::new()
+            .with_store_item(UNCACHED, "Uncached")
+            .failing_every_call_for(FAILING)
+            .held();
+
+        let (first, second, ()) = finishes(async {
+            tokio::join!(
+                GameCache::ensure_cached_from(&state, &steam, &[UNCACHED, FAILING]),
+                GameCache::ensure_cached_from(&state, &steam, &[UNCACHED, FAILING]),
+                release_after_overlap(&state, &steam, &gate),
+            )
+        })
+        .await;
+
+        let _ = first.unwrap();
+        let _ = second.unwrap();
+        // The failed chunk, then each of its apps on its own.
+        assert_eq!(steam.calls(), 3);
+        assert_eq!(
+            stored_name(&state.db, UNCACHED).await.as_deref(),
+            Some("Uncached")
+        );
+        assert_eq!(stored_raw_json(&state.db, FAILING).await, None);
     }
 
     #[tokio::test]

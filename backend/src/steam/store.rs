@@ -70,6 +70,8 @@ pub mod fake {
         failing_every_call: HashSet<u32>,
         failing_app_details: HashSet<u32>,
         failing_when_alone: HashSet<u32>,
+        rate_limited: bool,
+        rate_limited_when_alone: bool,
         calls: AtomicUsize,
         gate: Option<Arc<Semaphore>>,
     }
@@ -133,6 +135,19 @@ pub mod fake {
             self
         }
 
+        /// Every `GetItems` call fails the way Steam answers with HTTP 429.
+        pub fn rate_limiting_every_store_items_call(mut self) -> Self {
+            self.rate_limited = true;
+            self
+        }
+
+        /// `GetItems` fails the way Steam answers with HTTP 429 when asked for
+        /// one app on its own.
+        pub fn rate_limiting_store_items_calls_for_one_app(mut self) -> Self {
+            self.rate_limited_when_alone = true;
+            self
+        }
+
         /// Every call waits until the returned gate is released before it
         /// answers, as calls to a slow Steam would.
         pub fn held(mut self) -> (Self, SteamGate) {
@@ -168,6 +183,11 @@ pub mod fake {
         }
 
         fn store_items_for(&self, appids: &[u32]) -> AppResult<Vec<StoreItem>> {
+            if self.rate_limited || (self.rate_limited_when_alone && appids.len() == 1) {
+                return Err(AppError::SteamRateLimited(
+                    "fake GetItems rate limit".into(),
+                ));
+            }
             self.fail_if_any_failing(appids)?;
             if let [appid] = appids {
                 if self.failing_when_alone.contains(appid) {
