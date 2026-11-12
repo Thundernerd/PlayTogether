@@ -21,9 +21,10 @@ env:
   DOCKERHUB_USERNAME: tnrd
   # docker/metadata-action tag rules, shared by both jobs so the per-platform
   # image labels (e.g. org.opencontainers.image.version) match the published tags.
+  # `latest` is not in here: only the merge job adds it, and only when the run's
+  # commit is still the tip of the default branch (see "Check for tip of main").
   IMAGE_TAGS: |
     type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' }}
-    type=raw,value=latest,enable={{is_default_branch}}
     type=semver,pattern={{version}}
     type=semver,pattern={{major}}.{{minor}}
     type=sha,prefix=
@@ -123,12 +124,41 @@ jobs:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Runs on main finish in any order, so an older commit's run can finish last.
+      # Only move `latest` when this run's commit is still the tip of the default
+      # branch; otherwise publish the other tags (sha, semver, dispatch) only.
+      - name: Check for tip of main
+        id: tip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
+            echo "Not on $DEFAULT_BRANCH ($GITHUB_REF): not tagging latest."
+            echo "is-tip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/$DEFAULT_BRANCH" --jq .sha)
+          if [[ "$tip" == "$GITHUB_SHA" ]]; then
+            echo "$GITHUB_SHA is the tip of $DEFAULT_BRANCH: tagging latest."
+            echo "is-tip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$GITHUB_SHA is behind $DEFAULT_BRANCH ($tip): not tagging latest."
+            echo "is-tip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # latest=false turns off the `latest` that metadata-action would otherwise add
+      # on v* tag pushes, so `latest` only ever follows the tip of main. The low
+      # priority keeps `version` (and the Inspect step) on the sha or semver tag.
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
-          tags: ${{ env.IMAGE_TAGS }}
+          flavor: latest=false
+          tags: |
+            ${{ env.IMAGE_TAGS }}
+            type=raw,value=latest,priority=50,enable=${{ steps.tip.outputs.is-tip == 'true' }}
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
