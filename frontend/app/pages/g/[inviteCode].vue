@@ -20,13 +20,9 @@ const {
   copyInvite,
   onSyncUpdate,
 } = group
-const { loading: librariesLoading, failed: librariesFailed } = useMemberList('libraries')
-const { loading: wishlistsLoading, failed: wishlistsFailed } = useMemberList('wishlists')
-const {
-  data: sharedGames,
-  loading: sharedLoading,
-  failed: sharedFailed,
-} = useMemberList('shared')
+const { countStatus: librariesCountStatus } = useMemberList('libraries')
+const { countStatus: wishlistsCountStatus } = useMemberList('wishlists')
+const { data: sharedGames, countStatus: sharedCountStatus } = useMemberList('shared')
 
 const joinDisplayName = ref('')
 
@@ -88,12 +84,9 @@ onUnmounted(() => {
       :wishlist-count="wishlistCount"
       :library-count="libraryCount"
       :shared-count="sharedCount"
-      :library-loading="librariesLoading"
-      :wishlist-loading="wishlistsLoading"
-      :shared-loading="sharedLoading"
-      :library-failed="librariesFailed"
-      :wishlist-failed="wishlistsFailed"
-      :shared-failed="sharedFailed"
+      :library-status="librariesCountStatus"
+      :wishlist-status="wishlistsCountStatus"
+      :shared-status="sharedCountStatus"
       @copy-invite="copyInvite"
       @leave-group="leaveGroup"
       @delete-group="deleteGroup"
