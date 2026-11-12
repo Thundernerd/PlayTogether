@@ -76,13 +76,6 @@ export function useGroup() {
 
   const groupBasePath = computed(() => `/g/${inviteCode.value}`)
 
-  // Writes the group only while isCurrent() holds, so a refresh that resetMemberData() has
-  // superseded (the member left) doesn't write the left group back.
-  async function loadGroup(isCurrent: () => boolean) {
-    const detail = await api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`)
-    if (isCurrent()) groupDetail.value = detail
-  }
-
   async function fetchMe(): Promise<MeResponse | null> {
     try {
       return await api<MeResponse>('/api/members/me')
@@ -128,11 +121,14 @@ export function useGroup() {
   }
 
   // One refresh at a time, shared like the list requests. Once resetMemberData() has
-  // superseded it, it no longer writes the group or clears the refresh that replaced it.
+  // superseded it (the member left), it no longer writes the left group back or clears the
+  // refresh that replaced it.
   async function refreshMemberData() {
     if (inflight.refresh) return inflight.refresh
     const refresh: Promise<void> = Promise.all([
-      loadGroup(() => inflight.refresh === refresh),
+      api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`).then((detail) => {
+        if (inflight.refresh === refresh) groupDetail.value = detail
+      }),
       loadList('libraries'),
       loadList('wishlists'),
       loadList('shared'),
