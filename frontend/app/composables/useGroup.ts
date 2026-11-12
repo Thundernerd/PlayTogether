@@ -46,6 +46,7 @@ export function useGroup() {
     inflight.libraries = null
     inflight.wishlists = null
     inflight.shared = null
+    inflight.refresh = null
   }
 
   const isMember = computed(
@@ -74,10 +75,6 @@ export function useGroup() {
   )
 
   const groupBasePath = computed(() => `/g/${inviteCode.value}`)
-
-  async function loadGroup() {
-    groupDetail.value = await api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`)
-  }
 
   async function fetchMe(): Promise<MeResponse | null> {
     try {
@@ -123,19 +120,25 @@ export function useGroup() {
     return request
   }
 
+  // One refresh at a time, shared like the list requests. Once resetMemberData() has
+  // superseded it (the member left), it no longer writes the left group back or clears the
+  // refresh that replaced it.
   async function refreshMemberData() {
     if (inflight.refresh) return inflight.refresh
-    inflight.refresh = Promise.all([
-      loadGroup(),
+    const refresh: Promise<void> = Promise.all([
+      api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`).then((detail) => {
+        if (inflight.refresh === refresh) groupDetail.value = detail
+      }),
       loadList('libraries'),
       loadList('wishlists'),
       loadList('shared'),
     ])
       .then(() => {})
       .finally(() => {
-        inflight.refresh = null
+        if (inflight.refresh === refresh) inflight.refresh = null
       })
-    return inflight.refresh
+    inflight.refresh = refresh
+    return refresh
   }
 
   // The failed-state retry button. List failures land in their own error state; a failed
