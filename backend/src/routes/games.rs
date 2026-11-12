@@ -1,9 +1,9 @@
 use axum::{
-    Json,
     body::Body,
     extract::{Path, Query, State},
-    http::{HeaderMap, header},
+    http::{header, HeaderMap},
     response::Response,
+    Json,
 };
 use futures_util::StreamExt;
 use serde::Deserialize;
@@ -67,9 +67,9 @@ pub async fn stream_trailer_video(
         builder = builder.header(header::CONTENT_TYPE, content_type);
     }
 
-    let stream = upstream.bytes_stream().map(|chunk| {
-        chunk.map_err(std::io::Error::other)
-    });
+    let stream = upstream
+        .bytes_stream()
+        .map(|chunk| chunk.map_err(std::io::Error::other));
 
     builder
         .body(Body::from_stream(stream))

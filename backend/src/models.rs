@@ -20,10 +20,9 @@ mod steam_id_serde {
         match value {
             None => Ok(None),
             Some(SteamIdInput::Number(id)) => Ok(Some(id)),
-            Some(SteamIdInput::String(s)) => s
-                .parse::<u64>()
-                .map(Some)
-                .map_err(serde::de::Error::custom),
+            Some(SteamIdInput::String(s)) => {
+                s.parse::<u64>().map(Some).map_err(serde::de::Error::custom)
+            }
         }
     }
 

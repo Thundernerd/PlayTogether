@@ -12,13 +12,9 @@ const {
   groupDetail,
   groupBasePath,
 } = group
-const { loading: librariesLoading, failed: librariesFailed } = useMemberList('libraries')
-const { loading: wishlistsLoading, failed: wishlistsFailed } = useMemberList('wishlists')
-const {
-  data: sharedGames,
-  loading: sharedLoading,
-  failed: sharedFailed,
-} = useMemberList('shared')
+const { countStatus: librariesCountStatus } = useMemberList('libraries')
+const { countStatus: wishlistsCountStatus } = useMemberList('wishlists')
+const { data: sharedGames, countStatus: sharedCountStatus } = useMemberList('shared')
 
 const steamIdInput = ref('')
 
@@ -67,34 +63,20 @@ watch(
 
     <section class="card quick-links">
       <h2 class="section-title">Explore</h2>
-      <!-- A failed list says so instead of "0 games". It is checked before loading so the
-           marker holds steady while a sync keeps polling a failing endpoint. -->
       <div class="link-grid">
         <NuxtLink :to="`${groupBasePath}/library`" class="quick-link card">
           <strong>My library</strong>
-          <span v-if="librariesFailed" class="count-failed">Couldn't load</span>
-          <span v-else-if="librariesLoading" class="count-loading">
-            <LoadingSpinner size="sm" /> Loading…
-          </span>
-          <span v-else>{{ myLibrary?.items.length ?? 0 }} games</span>
+          <QuickLinkCount :status="librariesCountStatus" :count="myLibrary?.items.length ?? 0" />
           <span class="hint">Browse owned games and mark titles to play together</span>
         </NuxtLink>
         <NuxtLink :to="`${groupBasePath}/wishlist`" class="quick-link card">
           <strong>My wishlist</strong>
-          <span v-if="wishlistsFailed" class="count-failed">Couldn't load</span>
-          <span v-else-if="wishlistsLoading" class="count-loading">
-            <LoadingSpinner size="sm" /> Loading…
-          </span>
-          <span v-else>{{ myWishlist?.items.length ?? 0 }} games</span>
+          <QuickLinkCount :status="wishlistsCountStatus" :count="myWishlist?.items.length ?? 0" />
           <span class="hint">Browse, filter, and mark games to play together</span>
         </NuxtLink>
         <NuxtLink :to="`${groupBasePath}/play-together`" class="quick-link card">
           <strong>Play together</strong>
-          <span v-if="sharedFailed" class="count-failed">Couldn't load</span>
-          <span v-else-if="sharedLoading" class="count-loading">
-            <LoadingSpinner size="sm" /> Loading…
-          </span>
-          <span v-else>{{ sharedGames.length }} games</span>
+          <QuickLinkCount :status="sharedCountStatus" :count="sharedGames.length" />
           <span class="hint">Vote and rate the group's shared picks</span>
         </NuxtLink>
       </div>
@@ -146,18 +128,6 @@ watch(
 
 .quick-link strong {
   font-size: 1.0625rem;
-}
-
-.count-loading {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  color: var(--muted);
-}
-
-.count-failed {
-  color: var(--danger-text);
-  font-weight: 700;
 }
 
 .hint {

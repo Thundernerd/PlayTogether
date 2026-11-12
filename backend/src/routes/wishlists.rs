@@ -1,6 +1,6 @@
 use axum::{
-    Json,
     extract::{Path, State},
+    Json,
 };
 use uuid::Uuid;
 
@@ -12,7 +12,7 @@ use crate::models::{
     SetVoteRequest, SharedGame, WishlistItemView,
 };
 use crate::state::AppState;
-use crate::steam::{GameCache, load_games_map};
+use crate::steam::{load_games_map, GameCache};
 
 pub async fn get_group_wishlists(
     State(state): State<AppState>,
@@ -210,7 +210,11 @@ pub async fn set_vote(
         "up" => 1,
         "down" => -1,
         "none" => 0,
-        _ => return Err(AppError::BadRequest("vote must be up, down, or none".into())),
+        _ => {
+            return Err(AppError::BadRequest(
+                "vote must be up, down, or none".into(),
+            ))
+        }
     };
 
     sqlx::query(
@@ -255,7 +259,9 @@ pub async fn set_rating(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(serde_json::json!({ "appid": appid, "stars": body.stars })))
+    Ok(Json(
+        serde_json::json!({ "appid": appid, "stars": body.stars }),
+    ))
 }
 
 fn ensure_group_access(auth: &AuthMember, group_id: Uuid) -> AppResult<()> {
@@ -277,7 +283,9 @@ async fn ensure_shared_game(state: &AppState, group_id: Uuid, appid: u32) -> App
     .await?;
 
     if count == 0 {
-        return Err(AppError::BadRequest("game is not in the shared list".into()));
+        return Err(AppError::BadRequest(
+            "game is not in the shared list".into(),
+        ));
     }
     Ok(())
 }

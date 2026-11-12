@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Group } from '~/types/api'
+import type { CountStatus } from '~/utils/listStatus'
 
 defineProps<{
   group: Group
@@ -9,12 +10,9 @@ defineProps<{
   wishlistCount?: number
   libraryCount?: number
   sharedCount?: number
-  libraryLoading?: boolean
-  wishlistLoading?: boolean
-  sharedLoading?: boolean
-  libraryFailed?: boolean
-  wishlistFailed?: boolean
-  sharedFailed?: boolean
+  libraryStatus?: CountStatus
+  wishlistStatus?: CountStatus
+  sharedStatus?: CountStatus
 }>()
 
 const emit = defineEmits<{
@@ -38,12 +36,9 @@ const emit = defineEmits<{
         :wishlist-count="wishlistCount"
         :library-count="libraryCount"
         :shared-count="sharedCount"
-        :library-loading="libraryLoading"
-        :wishlist-loading="wishlistLoading"
-        :shared-loading="sharedLoading"
-        :library-failed="libraryFailed"
-        :wishlist-failed="wishlistFailed"
-        :shared-failed="sharedFailed"
+        :library-status="libraryStatus"
+        :wishlist-status="wishlistStatus"
+        :shared-status="sharedStatus"
       />
     </div>
     <div v-if="isMember" class="header-actions">
