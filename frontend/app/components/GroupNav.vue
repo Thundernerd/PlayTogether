@@ -1,16 +1,16 @@
 <script setup lang="ts">
+import type { CountStatus } from '~/utils/listStatus'
+
+// A list that never loaded shows a dash, not a count that reads as an empty list; one whose
+// last refresh failed keeps its last count with a "couldn't refresh" mark.
 const props = defineProps<{
   basePath: string
   wishlistCount?: number
   libraryCount?: number
   sharedCount?: number
-  libraryLoading?: boolean
-  wishlistLoading?: boolean
-  sharedLoading?: boolean
-  // The list's last load failed: show a dash, not a count that reads as an empty list.
-  libraryFailed?: boolean
-  wishlistFailed?: boolean
-  sharedFailed?: boolean
+  libraryStatus?: CountStatus
+  wishlistStatus?: CountStatus
+  sharedStatus?: CountStatus
 }>()
 
 const route = useRoute()
@@ -21,22 +21,19 @@ const links = computed(() => [
     to: `${props.basePath}/library`,
     label: 'My library',
     count: props.libraryCount,
-    loading: props.libraryLoading,
-    failed: props.libraryFailed,
+    status: props.libraryStatus,
   },
   {
     to: `${props.basePath}/wishlist`,
     label: 'My wishlist',
     count: props.wishlistCount,
-    loading: props.wishlistLoading,
-    failed: props.wishlistFailed,
+    status: props.wishlistStatus,
   },
   {
     to: `${props.basePath}/play-together`,
     label: 'Play together',
     count: props.sharedCount,
-    loading: props.sharedLoading,
-    failed: props.sharedFailed,
+    status: props.sharedStatus,
   },
 ])
 
@@ -59,14 +56,23 @@ function isActive(link: { to: string; exact?: boolean }) {
     >
       {{ link.label }}
       <span
-        v-if="link.failed"
+        v-if="link.status === 'failed'"
         class="count failed"
         role="img"
         title="Couldn't load"
         aria-label="Couldn't load"
       >–</span>
+      <span
+        v-else-if="link.status === 'stale' && link.count != null"
+        class="count stale"
+        role="img"
+        title="Couldn't refresh: showing the last count"
+        :aria-label="`${link.count}, couldn't refresh`"
+      >
+        {{ link.count }}<span class="stale-mark" aria-hidden="true">!</span>
+      </span>
       <span v-else-if="link.count != null" class="count">
-        <LoadingSpinner v-if="link.loading" size="sm" />
+        <LoadingSpinner v-if="link.status === 'loading'" size="sm" />
         <template v-else>{{ link.count }}</template>
       </span>
     </NuxtLink>
@@ -119,6 +125,15 @@ function isActive(link: { to: string; exact?: boolean }) {
 
 .count.failed {
   color: var(--danger-text);
+}
+
+.count.stale {
+  gap: 0.15rem;
+}
+
+.stale-mark {
+  color: var(--warning-text);
+  font-weight: 800;
 }
 
 .nav-link.active .count {

@@ -1,6 +1,6 @@
 use axum::{
-    Json,
     extract::{Path, State},
+    Json,
 };
 use chrono::Utc;
 use uuid::Uuid;
@@ -20,7 +20,9 @@ pub async fn create_group(
     Json(body): Json<CreateGroupRequest>,
 ) -> AppResult<Json<CreateGroupResponse>> {
     if body.name.trim().is_empty() || body.display_name.trim().is_empty() {
-        return Err(AppError::BadRequest("name and display_name are required".into()));
+        return Err(AppError::BadRequest(
+            "name and display_name are required".into(),
+        ));
     }
 
     let group_id = Uuid::new_v4();
@@ -31,15 +33,13 @@ pub async fn create_group(
 
     let mut tx = state.db.begin().await?;
 
-    sqlx::query(
-        "INSERT INTO play_groups (id, name, invite_code, created_at) VALUES (?, ?, ?, ?)",
-    )
-    .bind(group_id.to_string())
-    .bind(body.name.trim())
-    .bind(&invite_code)
-    .bind(&now)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("INSERT INTO play_groups (id, name, invite_code, created_at) VALUES (?, ?, ?, ?)")
+        .bind(group_id.to_string())
+        .bind(body.name.trim())
+        .bind(&invite_code)
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?;
 
     sqlx::query(
         "INSERT INTO members (id, group_id, display_name, steam_id, token, created_at) VALUES (?, ?, ?, NULL, ?, ?)",
@@ -79,8 +79,7 @@ pub async fn get_by_invite(
     Path(code): Path<String>,
 ) -> AppResult<Json<GroupDetailResponse>> {
     let group_row = db::get_group_by_invite(&state.db, &code).await?;
-    let group_id =
-        Uuid::parse_str(&group_row.id).map_err(|e| AppError::Internal(e.to_string()))?;
+    let group_id = Uuid::parse_str(&group_row.id).map_err(|e| AppError::Internal(e.to_string()))?;
     let group = group_row.into_group()?;
     let members = db::list_group_members(&state.db, group_id).await?;
 
@@ -97,8 +96,7 @@ pub async fn join_group(
     }
 
     let group_row = db::get_group_by_invite(&state.db, &code).await?;
-    let group_id =
-        Uuid::parse_str(&group_row.id).map_err(|e| AppError::Internal(e.to_string()))?;
+    let group_id = Uuid::parse_str(&group_row.id).map_err(|e| AppError::Internal(e.to_string()))?;
 
     let member_id = Uuid::new_v4();
     let token = Uuid::new_v4().to_string();

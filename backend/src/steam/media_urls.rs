@@ -1,6 +1,5 @@
 use crate::steam::client::{
-    AppDetailsData, Assets, StoreItem, StoreScreenshots, StoreTrailers,
-    StoreTrailer,
+    AppDetailsData, Assets, StoreItem, StoreScreenshots, StoreTrailer, StoreTrailers,
 };
 
 pub const STORE_ASSETS_BASE: &str = "https://shared.fastly.steamstatic.com/store_item_assets/";
@@ -8,11 +7,14 @@ pub const STEAM_MOVIE_CDN: &str = "https://cdn.cloudflare.steamstatic.com/steam/
 pub const STEAM_TRAILER_VIDEO_CDN: &str = "https://video.akamai.steamstatic.com/store_trailers/";
 
 pub fn normalize_store_asset_url(url: &str) -> String {
-    url.replace("shared.akamai.steamstatic.com", "shared.fastly.steamstatic.com")
-        .replace(
-            "/store_item_assets/steam/steam/",
-            "/store_item_assets/steam/",
-        )
+    url.replace(
+        "shared.akamai.steamstatic.com",
+        "shared.fastly.steamstatic.com",
+    )
+    .replace(
+        "/store_item_assets/steam/steam/",
+        "/store_item_assets/steam/",
+    )
 }
 
 pub fn resolve_asset_url(appid: u32, assets: &Option<Assets>, filename: &str) -> String {
@@ -35,7 +37,9 @@ pub fn resolve_asset_url(appid: u32, assets: &Option<Assets>, filename: &str) ->
     }
 
     if filename.contains('/') {
-        return normalize_store_asset_url(&format!("{STORE_ASSETS_BASE}steam/apps/{appid}/{filename}"));
+        return normalize_store_asset_url(&format!(
+            "{STORE_ASSETS_BASE}steam/apps/{appid}/{filename}"
+        ));
     }
 
     normalize_store_asset_url(&format!("{STORE_ASSETS_BASE}steam/apps/{appid}/{filename}"))
@@ -63,12 +67,18 @@ pub fn header_image_url_from_app_details(detail: &AppDetailsData) -> Option<Stri
 
 pub fn normalize_header_image_url(stored: &str, appid: u32) -> String {
     if stored.is_empty() {
-        return normalize_store_asset_url(&format!("{STORE_ASSETS_BASE}steam/apps/{appid}/header.jpg"));
+        return normalize_store_asset_url(&format!(
+            "{STORE_ASSETS_BASE}steam/apps/{appid}/header.jpg"
+        ));
     }
     normalize_store_asset_url(stored)
 }
 
-pub fn screenshot_urls(appid: u32, assets: &Option<Assets>, screenshots: &StoreScreenshots) -> Vec<String> {
+pub fn screenshot_urls(
+    appid: u32,
+    assets: &Option<Assets>,
+    screenshots: &StoreScreenshots,
+) -> Vec<String> {
     let mut urls = Vec::new();
     for list in [
         screenshots.all_ages_screenshots.as_deref(),
@@ -115,7 +125,9 @@ pub fn trailer_thumbnail_url(trailer: &StoreTrailer) -> Option<String> {
         if path.starts_with("http://") || path.starts_with("https://") {
             return Some(normalize_store_asset_url(&path));
         }
-        return Some(normalize_store_asset_url(&format!("{STORE_ASSETS_BASE}{path}")));
+        return Some(normalize_store_asset_url(&format!(
+            "{STORE_ASSETS_BASE}{path}"
+        )));
     }
 
     if medium.contains('/') {
@@ -213,7 +225,9 @@ pub fn trailer_proxy_video_url(appid: u32, index: usize, webm: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::steam::client::{Assets, StoreScreenshot, StoreScreenshots, StoreTrailer, TrailerVideoSource};
+    use crate::steam::client::{
+        Assets, StoreScreenshot, StoreScreenshots, StoreTrailer, TrailerVideoSource,
+    };
 
     fn assets_standard(appid: u32) -> Assets {
         Assets {
@@ -428,7 +442,9 @@ mod tests {
             trailer_video_webm_url(&trailer).unwrap(),
             "https://video.akamai.steamstatic.com/store_trailers/4680930/2027708481/b7da0efc55abd03e22cb42dee71bd45d841cc8b4/1781476898/microtrailer.webm"
         );
-        assert!(is_allowed_video_cdn_url(&trailer_video_mp4_url(&trailer).unwrap()));
+        assert!(is_allowed_video_cdn_url(
+            &trailer_video_mp4_url(&trailer).unwrap()
+        ));
     }
 
     #[test]
