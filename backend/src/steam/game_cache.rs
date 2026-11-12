@@ -12,7 +12,7 @@ use crate::steam::client::{
     derive_is_released, derive_is_released_from_app_details, store_item_has_details,
     AppDetailsData, SteamClient, StoreItem,
 };
-use crate::steam::game_refresh::{fetch_ended, FetchClaim, OwnedFetch};
+use crate::steam::game_refresh::{FetchClaim, InFlightFetch, OwnedFetch};
 use crate::steam::media_urls::{
     collect_trailers, header_image_url, header_image_url_from_app_details,
     header_image_url_from_item, is_allowed_video_cdn_url, normalize_header_image_url,
@@ -308,13 +308,16 @@ impl GameCache {
             if missing.is_empty() {
                 return Ok(());
             }
-            let FetchClaim { fetch, others } = state.game_refresh.claim_fetches(&missing);
-            if others.is_empty() {
+            let FetchClaim {
+                fetch,
+                in_flight_elsewhere,
+            } = state.game_refresh.claim_fetches(&missing);
+            if in_flight_elsewhere.is_empty() {
                 return Self::fetch_owned(state, client, fetch).await;
             }
             let (own, _) = tokio::join!(
                 Self::fetch_owned(state, client, fetch),
-                join_all(others.into_iter().map(fetch_ended)),
+                join_all(in_flight_elsewhere.into_iter().map(InFlightFetch::ended)),
             );
             own?;
             let stored = Self::get_stored_appids(&state.db, &missing).await?;
@@ -1409,11 +1412,33 @@ mod tests {
         assert_eq!(state.game_refresh.queued(), Vec::<u32>::new());
     }
 
-    /// Lets `steam`'s held calls answer once the first call has reached it
-    /// and the other list loads have had time to reach it too.
-    async fn release_after_overlap(steam: &FakeSteam, gate: &SteamGate) {
-        reached(steam).await;
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    /// `future`'s output; fails the test when it hangs, as a list load left
+    /// waiting for a claim that is never released would.
+    async fn finishes<T>(future: impl std::future::Future<Output = T>) -> T {
+        tokio::time::timeout(std::time::Duration::from_secs(5), future)
+            .await
+            .expect("list loads hung")
+    }
+
+    /// Waits until a call has reached `steam`.
+    async fn reached(steam: &FakeSteam) {
+        while steam.calls() == 0 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    /// Waits until a list load waits for another list load's fetch of
+    /// `appid`, or, should it not wait, until it has reached `steam` too.
+    async fn overlapped(state: &AppState, steam: &FakeSteam, appid: u32) {
+        while state.game_refresh.waiting_for(appid) == 0 && steam.calls() < 2 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    /// Lets `steam`'s held calls answer once a second list load has
+    /// overlapped the first one's fetch of `appid`.
+    async fn release_after_overlap(state: &AppState, steam: &FakeSteam, gate: &SteamGate) {
+        overlapped(state, steam, UNCACHED).await;
         gate.release();
     }
 
@@ -1424,11 +1449,14 @@ mod tests {
             .with_store_item(UNCACHED, "Uncached")
             .held();
 
-        let (first, second, ()) = tokio::join!(
-            GameCache::ensure_cached_from(&state, &steam, &[UNCACHED]),
-            GameCache::ensure_cached_from(&state, &steam, &[UNCACHED]),
-            release_after_overlap(&steam, &gate),
-        );
+        let (first, second, ()) = finishes(async {
+            tokio::join!(
+                GameCache::ensure_cached_from(&state, &steam, &[UNCACHED]),
+                GameCache::ensure_cached_from(&state, &steam, &[UNCACHED]),
+                release_after_overlap(&state, &steam, &gate),
+            )
+        })
+        .await;
 
         let _ = first.unwrap();
         let _ = second.unwrap();
@@ -1444,23 +1472,19 @@ mod tests {
         let state = test_state(test_db().await);
         let (steam, gate) = FakeSteam::new().failing_every_call_for(UNCACHED).held();
 
-        let (first, second, ()) = tokio::join!(
-            GameCache::ensure_cached_from(&state, &steam, &[UNCACHED]),
-            GameCache::ensure_cached_from(&state, &steam, &[UNCACHED]),
-            release_after_overlap(&steam, &gate),
-        );
+        let (first, second, ()) = finishes(async {
+            tokio::join!(
+                GameCache::ensure_cached_from(&state, &steam, &[UNCACHED]),
+                GameCache::ensure_cached_from(&state, &steam, &[UNCACHED]),
+                release_after_overlap(&state, &steam, &gate),
+            )
+        })
+        .await;
 
         let _ = first.unwrap();
         let _ = second.unwrap();
         assert_eq!(steam.calls(), 1);
         assert_eq!(stored_raw_json(&state.db, UNCACHED).await, None);
-    }
-
-    /// Waits until a call has reached `steam`.
-    async fn reached(steam: &FakeSteam) {
-        while steam.calls() == 0 {
-            tokio::task::yield_now().await;
-        }
     }
 
     #[tokio::test]
@@ -1477,9 +1501,13 @@ mod tests {
         }
 
         let answering = FakeSteam::new().with_store_item(UNCACHED, "Uncached");
-        let _ = GameCache::ensure_cached_from(&state, &answering, &[UNCACHED])
-            .await
-            .unwrap();
+        let _ = finishes(GameCache::ensure_cached_from(
+            &state,
+            &answering,
+            &[UNCACHED],
+        ))
+        .await
+        .unwrap();
 
         assert_eq!(answering.calls(), 1);
         assert_eq!(
@@ -1501,13 +1529,16 @@ mod tests {
         }
 
         let answering = FakeSteam::new().with_store_item(UNCACHED, "Uncached");
-        let (second, ()) = tokio::join!(
-            GameCache::ensure_cached_from(&state, &answering, &[UNCACHED]),
-            async move {
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                drop(first);
-            },
-        );
+        let (second, ()) = finishes(async {
+            tokio::join!(
+                GameCache::ensure_cached_from(&state, &answering, &[UNCACHED]),
+                async {
+                    overlapped(&state, &answering, UNCACHED).await;
+                    drop(first);
+                },
+            )
+        })
+        .await;
 
         let _ = second.unwrap();
         assert_eq!(answering.calls(), 1);

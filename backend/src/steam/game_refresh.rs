@@ -41,9 +41,9 @@ struct QueueState {
     /// When a fetch from Steam last failed for an appid still in its cooldown.
     failed_at: HashMap<u32, Instant>,
     worker_running: bool,
-    /// Appids with no row that a list load is fetching from Steam, each with
-    /// the channel that closes when that fetch ends.
-    fetching: HashMap<u32, watch::Receiver<()>>,
+    /// Appids with no row that a list load is fetching from Steam. Removing
+    /// an appid closes its channel, which wakes the list loads waiting for it.
+    fetching: HashMap<u32, watch::Sender<()>>,
 }
 
 impl GameRefreshQueue {
@@ -101,15 +101,14 @@ impl GameRefreshQueue {
     /// The ones another list load is fetching already are not claimed again;
     /// the claim holds a wait for each of their fetches instead.
     pub fn claim_fetches(&self, appids: &[u32]) -> FetchClaim<'_> {
-        let (done, done_rx) = watch::channel(());
         let mut state = self.state();
         let mut owned = Vec::new();
-        let mut others = Vec::new();
+        let mut in_flight_elsewhere = Vec::new();
         for &appid in appids {
             match state.fetching.get(&appid) {
-                Some(other) => others.push(other.clone()),
+                Some(fetch) => in_flight_elsewhere.push(InFlightFetch(fetch.subscribe())),
                 None => {
-                    state.fetching.insert(appid, done_rx.clone());
+                    state.fetching.insert(appid, watch::channel(()).0);
                     owned.push(appid);
                 }
             }
@@ -118,10 +117,18 @@ impl GameRefreshQueue {
             fetch: OwnedFetch {
                 queue: self,
                 appids: owned,
-                _done: done,
             },
-            others,
+            in_flight_elsewhere,
         }
+    }
+
+    /// How many list loads wait for another list load's fetch of `appid`.
+    #[cfg(test)]
+    pub fn waiting_for(&self, appid: u32) -> usize {
+        self.state()
+            .fetching
+            .get(&appid)
+            .map_or(0, watch::Sender::receiver_count)
     }
 
     /// Queues the `appids` that are not claimed already or in their cooldown.
@@ -215,7 +222,7 @@ impl Drop for RefreshWorker<'_> {
 /// owns and the other list loads' fetches it waits for.
 pub struct FetchClaim<'a> {
     pub fetch: OwnedFetch<'a>,
-    pub others: Vec<watch::Receiver<()>>,
+    pub in_flight_elsewhere: Vec<InFlightFetch>,
 }
 
 /// The appids one list load fetches from Steam. Dropping it, whether the
@@ -224,11 +231,11 @@ pub struct FetchClaim<'a> {
 pub struct OwnedFetch<'a> {
     queue: &'a GameRefreshQueue,
     appids: Vec<u32>,
-    /// Closes the waiters' channel when dropped.
-    _done: watch::Sender<()>,
 }
 
 impl OwnedFetch<'_> {
+    /// The appids this list load fetches; empty when other list loads are
+    /// fetching all of the ones it asked for.
     pub fn appids(&self) -> &[u32] {
         &self.appids
     }
@@ -243,10 +250,15 @@ impl Drop for OwnedFetch<'_> {
     }
 }
 
-/// Waits until the fetch behind `fetch` has ended, however it ended.
-pub async fn fetch_ended(mut fetch: watch::Receiver<()>) {
-    // Nothing is sent on the channel, so this returns once it closes.
-    let _ = fetch.changed().await;
+/// Another list load's fetch of an app with no row.
+pub struct InFlightFetch(watch::Receiver<()>);
+
+impl InFlightFetch {
+    /// Waits until the fetch has ended, however it ended.
+    pub async fn ended(mut self) {
+        // Nothing is sent on the channel, so this returns once it closes.
+        let _ = self.0.changed().await;
+    }
 }
 
 #[cfg(test)]
