@@ -1,12 +1,19 @@
 # syntax=docker/dockerfile:1
 
-FROM rust:1-bookworm AS builder
+# Keep in sync with backend/rust-toolchain.toml.
+FROM rust:1.99.1-bookworm AS builder
 
 WORKDIR /app
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libsqlite3-dev pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# The image tag already provides the pinned rustc; this installs the pinned
+# components (rustfmt, clippy) in a cached layer. If the tag ever drifts from
+# rust-toolchain.toml, rustup installs the pinned version here instead.
+COPY rust-toolchain.toml ./
+RUN rustup toolchain install && rustup show active-toolchain
 
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
