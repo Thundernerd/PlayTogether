@@ -11,6 +11,10 @@ const inflight: Record<ListKey | 'refresh', Promise<void> | null> = {
   refresh: null,
 }
 
+// Bumped by resetMemberData() (the member left), so an ensureLoaded() that started before
+// the reset knows its group and member responses are stale. Shared like the requests.
+let resets = 0
+
 const listPaths: Record<ListKey, string> = {
   libraries: 'libraries',
   wishlists: 'wishlists',
@@ -42,6 +46,7 @@ export function useGroup() {
   const error = ref<string | null>(null)
 
   function resetMemberData() {
+    resets++
     lists.value = emptyMemberLists()
     inflight.libraries = null
     inflight.wishlists = null
@@ -165,6 +170,7 @@ export function useGroup() {
     syncFromStorage()
     loading.value = true
     error.value = null
+    const resetsAtStart = resets
     try {
       const [nextGroup, nextMe] = await Promise.all([
         groupDetail.value
@@ -172,6 +178,8 @@ export function useGroup() {
           : api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`),
         token.value && !me.value ? fetchMe() : undefined,
       ])
+      // The member left while these were in flight: don't write the left group back.
+      if (resets !== resetsAtStart) return
       // Assign and start the list loads in one synchronous step: otherwise Vue renders the
       // member's page before the loading flags are set, flashing its empty / not-synced text.
       if (nextGroup) groupDetail.value = nextGroup

@@ -274,3 +274,40 @@ describe('useGroup refreshing as a non-member', () => {
     expect(group.groupDetail.value).toEqual(synced)
   })
 })
+
+describe('useGroup leaving while the initial load is in flight', () => {
+  const leftGroup = { group: { name: 'Left group' }, members: [{}] }
+
+  it.each(['leaveGroup', 'deleteGroup'] as const)(
+    'does not write the group or member back when the load settles after %s',
+    async (action) => {
+      api.mockReset()
+      vi.stubGlobal('confirm', () => true)
+      useMemberLists().value = emptyMemberLists()
+      useState('groupDetail').value = null
+      useState('groupMe').value = null
+      useMemberToken().setToken('member-token')
+      const pendingGroup = deferred<typeof leftGroup>()
+      const pendingMe = deferred<MeResponse>()
+      api.mockImplementation((url: string, options?: { method?: string }) => {
+        if (isGroup(url)) return pendingGroup.promise
+        if (url.endsWith('/api/members/me') && !options?.method) return pendingMe.promise
+        return Promise.resolve([])
+      })
+      const group = useGroup()
+
+      const load = group.ensureLoaded()
+      // Another load (the layout's or the page's) fills the group first, so the member can leave.
+      useState('groupDetail').value = leftGroup
+      signInAsMember()
+      const member = group.me.value!
+      await group[action]()
+      pendingGroup.resolve(leftGroup)
+      pendingMe.resolve(member)
+      await load
+
+      expect(group.groupDetail.value).toBeNull()
+      expect(group.me.value).toBeNull()
+    },
+  )
+})
