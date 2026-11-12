@@ -4,7 +4,7 @@ Compare Steam wishlists with friends, mark games you want to play together, and 
 
 ## Prerequisites
 
-- Rust (stable)
+- Rust, as pinned in `backend/rust-toolchain.toml` (see [Backend](#backend-port-8080))
 - Node.js 22.18+ (or 24.11+)
 - npm as pinned in `frontend/package.json`'s `packageManager` field (see [Frontend](#frontend-port-3000))
 - Steam profiles with **public** wishlists and **public game details** (required for sync)
@@ -38,6 +38,13 @@ Environment variables (optional):
 | `STEAM_API_KEY` | *(unset — wishlist sync works; library sync is skipped)* |
 
 If you have an existing `playwishlist.db` from a previous install, rename it to `playtogether.db` or set `DATABASE_URL=sqlite:playwishlist.db?mode=rwc`.
+
+`backend/rust-toolchain.toml` is the source of truth for the Rust version. rustup installs and uses it automatically in `backend/`, and so does the "Backend checks" workflow. To bump the version, edit:
+
+- `channel` in `backend/rust-toolchain.toml`
+- the `RUST_VERSION` build arg default in `backend/Dockerfile` (the Docker build fails if the two differ)
+
+Then run `cargo fmt` and `cargo clippy --all-targets` in `backend/` and fix anything the new version reports.
 
 CI fails if the backend isn't `rustfmt`-clean: run `cargo fmt` in `backend/` before pushing (`cargo fmt --check` reports drift without changing files).
 
