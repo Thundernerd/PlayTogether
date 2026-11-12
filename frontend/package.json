@@ -27,5 +27,10 @@
   },
   "engines": {
     "node": "^22.18.0 || >=24.11.0"
+  },
+  "allowScripts": {
+    "esbuild": false,
+    "fsevents": false,
+    "@parcel/watcher": false
   }
 }
