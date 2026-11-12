@@ -70,6 +70,7 @@ pub mod fake {
         failing_every_call: HashSet<u32>,
         failing_app_details: HashSet<u32>,
         failing_when_alone: HashSet<u32>,
+        fails_every_store_items_call: bool,
         rate_limited: bool,
         rate_limited_when_alone: bool,
         calls: AtomicUsize,
@@ -135,6 +136,13 @@ pub mod fake {
             self
         }
 
+        /// Every `GetItems` call fails, as an HTTP 5xx or a lost connection
+        /// would during a Steam outage.
+        pub fn failing_every_store_items_call(mut self) -> Self {
+            self.fails_every_store_items_call = true;
+            self
+        }
+
         /// Every `GetItems` call fails the way Steam answers with HTTP 429.
         pub fn rate_limiting_every_store_items_call(mut self) -> Self {
             self.rate_limited = true;
@@ -187,6 +195,9 @@ pub mod fake {
                 return Err(AppError::SteamRateLimited(
                     "fake GetItems rate limit".into(),
                 ));
+            }
+            if self.fails_every_store_items_call {
+                return Err(AppError::Steam("fake GetItems outage".into()));
             }
             self.fail_if_any_failing(appids)?;
             if let [appid] = appids {
