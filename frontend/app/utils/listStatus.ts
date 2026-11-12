@@ -37,7 +37,9 @@ export function listStatus(list: {
 // What a list's count (nav badge, overview quick link) shows, checked in this order.
 // 'failed' (a marker instead of a number) only covers a list that never loaded; once it has,
 // a failed refresh is 'stale': the last count plus a "couldn't refresh" hint. Both are checked
-// before 'loading' so they hold steady while a sync keeps polling a failing endpoint.
+// before 'loading' so they hold steady while a sync keeps polling a failing endpoint. 'loading'
+// (a spinner) only covers a list's first load, so poll, vote, rate and selection refreshes
+// keep the current count instead of flashing a spinner.
 export type CountStatus = 'failed' | 'stale' | 'loading' | 'count'
 
 export function countStatus(list: {
@@ -47,6 +49,6 @@ export function countStatus(list: {
   error: string | null
 }): CountStatus {
   if (list.error) return list.loaded ? 'stale' : 'failed'
-  if (list.loading) return 'loading'
+  if (list.loading && !list.loaded) return 'loading'
   return 'count'
 }

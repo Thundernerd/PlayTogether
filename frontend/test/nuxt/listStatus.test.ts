@@ -18,6 +18,10 @@ describe('countStatus (nav badge and overview quick link)', () => {
     expect(countStatus({ loaded: false, loading: true, error: null })).toBe('loading')
     expect(countStatus({ loaded: true, loading: false, error: null })).toBe('count')
   })
+
+  it('keeps the count of a loaded list while a refresh of it is in flight', () => {
+    expect(countStatus({ loaded: true, loading: true, error: null })).toBe('count')
+  })
 })
 
 describe('listStatus (list page)', () => {
