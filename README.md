@@ -4,7 +4,7 @@ Compare Steam wishlists with friends, mark games you want to play together, and 
 
 ## Prerequisites
 
-- Rust (stable)
+- Rust, as pinned in `backend/rust-toolchain.toml` (see [Backend](#backend-port-8080))
 - Node.js 22.18+ (or 24.11+)
 - npm as pinned in `frontend/package.json`'s `packageManager` field (see [Frontend](#frontend-port-3000))
 - Steam profiles with **public** wishlists and **public game details** (required for sync)
@@ -39,6 +39,13 @@ Environment variables (optional):
 
 If you have an existing `playwishlist.db` from a previous install, rename it to `playtogether.db` or set `DATABASE_URL=sqlite:playwishlist.db?mode=rwc`.
 
+`backend/rust-toolchain.toml` is the source of truth for the Rust version. rustup installs and uses it automatically in `backend/`, and so does the "Backend checks" workflow. To bump the version, edit:
+
+- `channel` in `backend/rust-toolchain.toml`
+- the `RUST_VERSION` build arg default in `backend/Dockerfile` (the Docker build fails if the two differ)
+
+Then run `cargo fmt` and `cargo clippy --all-targets` in `backend/` and fix anything the new version reports.
+
 CI fails if the backend isn't `rustfmt`-clean: run `cargo fmt` in `backend/` before pushing (`cargo fmt --check` reports drift without changing files).
 
 ### Frontend (port 3000)
@@ -57,6 +64,8 @@ Set `BACKEND_URL=http://localhost:8080` if the API runs elsewhere.
 npm install -g "$(node -p "require('./package.json').packageManager")"
 ```
 
+The pinned npm runs a dependency's install scripts only when `allowScripts` in `frontend/package.json` allows that package. The packages it denies don't need their scripts, because each one already ships a prebuilt binary: esbuild and @parcel/watcher through their optional platform packages, and fsevents (macOS only) inside the package. If `npm ci` warns that a new dependency's install scripts are `not yet covered by allowScripts`, decide whether it needs them and record the answer with `npm deny-scripts <pkg>` or `npm approve-scripts <pkg>`.
+
 Type-check the frontend (including `.vue` files) with `npm run typecheck`; `npm run build` does not type-check.
 
 Run the frontend unit tests (Vitest, under `frontend/test/`) with `npm run test`.
@@ -73,7 +82,7 @@ The minimum supported version is `engines.node` in `frontend/package.json`; if i
 
 1. **Create or join a group** using an invite link (no accounts — a browser token identifies you).
 2. **Add your Steam ID64** — the backend fetches your public wishlist and owned games from Steam.
-3. **Game metadata** is fetched in chunks and stored in SQLite (`steam_games`). Cached data is reused across all members and groups for 7 days (prices for 24 hours). Games with no cached row are fetched before a list loads; rows past either TTL are served from the cache and refreshed in the background. A game Steam fails for is not fetched again for 15 minutes, and a game with no cached row is left out of the lists until then.
+3. **Game metadata** is fetched in chunks and stored in SQLite (`steam_games`). Cached data is reused across all members and groups for 7 days (prices for 24 hours). Games with no cached row are fetched before a list loads, once even when list loads overlap; rows past either TTL are served from the cache and refreshed in the background. A game Steam fails for is not fetched again for 15 minutes, and a game with no cached row is left out of the lists until then.
 4. **Check games** you want to play together on your wishlist or library cards.
 5. **Vote and rate** games in the shared “Play together” list.
 

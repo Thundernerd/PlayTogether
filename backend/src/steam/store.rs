@@ -52,6 +52,10 @@ impl SteamStore for SteamClient {
 #[cfg(test)]
 pub mod fake {
     use std::collections::{HashMap, HashSet};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use tokio::sync::Semaphore;
 
     use super::*;
     use crate::error::AppError;
@@ -66,6 +70,20 @@ pub mod fake {
         failing_every_call: HashSet<u32>,
         failing_app_details: HashSet<u32>,
         failing_when_alone: HashSet<u32>,
+        rate_limited: bool,
+        rate_limited_when_alone: bool,
+        calls: AtomicUsize,
+        gate: Option<Arc<Semaphore>>,
+    }
+
+    /// Releases the calls a `FakeSteam` built with `held` holds.
+    pub struct SteamGate(Arc<Semaphore>);
+
+    impl SteamGate {
+        /// Lets every held call, and every later one, answer.
+        pub fn release(&self) {
+            self.0.close();
+        }
     }
 
     impl FakeSteam {
@@ -117,6 +135,41 @@ pub mod fake {
             self
         }
 
+        /// Every `GetItems` call fails the way Steam answers with HTTP 429.
+        pub fn rate_limiting_every_store_items_call(mut self) -> Self {
+            self.rate_limited = true;
+            self
+        }
+
+        /// `GetItems` fails the way Steam answers with HTTP 429 when asked for
+        /// one app on its own.
+        pub fn rate_limiting_store_items_calls_for_one_app(mut self) -> Self {
+            self.rate_limited_when_alone = true;
+            self
+        }
+
+        /// Every call waits until the returned gate is released before it
+        /// answers, as calls to a slow Steam would.
+        pub fn held(mut self) -> (Self, SteamGate) {
+            let gate = Arc::new(Semaphore::new(0));
+            self.gate = Some(gate.clone());
+            (self, SteamGate(gate))
+        }
+
+        /// How many calls were made to Steam, held ones included.
+        pub fn calls(&self) -> usize {
+            self.calls.load(Ordering::SeqCst)
+        }
+
+        /// Counts the call and waits for the gate, if the fake is held.
+        async fn call(&self) {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(gate) = &self.gate {
+                // The gate is released by closing it, so acquiring fails then.
+                let _ = gate.acquire().await;
+            }
+        }
+
         fn fail_if_any_failing(&self, appids: &[u32]) -> AppResult<()> {
             match appids
                 .iter()
@@ -130,6 +183,11 @@ pub mod fake {
         }
 
         fn store_items_for(&self, appids: &[u32]) -> AppResult<Vec<StoreItem>> {
+            if self.rate_limited || (self.rate_limited_when_alone && appids.len() == 1) {
+                return Err(AppError::SteamRateLimited(
+                    "fake GetItems rate limit".into(),
+                ));
+            }
             self.fail_if_any_failing(appids)?;
             if let [appid] = appids {
                 if self.failing_when_alone.contains(appid) {
@@ -158,14 +216,17 @@ pub mod fake {
 
     impl SteamStore for FakeSteam {
         async fn fetch_store_items(&self, appids: &[u32]) -> AppResult<Vec<StoreItem>> {
+            self.call().await;
             self.store_items_for(appids)
         }
 
         async fn fetch_store_item_details(&self, appid: u32) -> AppResult<Vec<StoreItem>> {
+            self.call().await;
             self.store_items_for(&[appid])
         }
 
         async fn fetch_app_details(&self, appid: u32) -> AppResult<Option<AppDetailsData>> {
+            self.call().await;
             self.fail_if_any_failing(&[appid])?;
             if self.failing_app_details.contains(&appid) {
                 return Err(AppError::Steam(format!(
