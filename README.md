@@ -46,7 +46,11 @@ If you have an existing `playwishlist.db` from a previous install, rename it to 
 
 Then run `cargo fmt` and `cargo clippy --all-targets` in `backend/` and fix anything the new version reports.
 
-CI fails if the backend isn't `rustfmt`-clean: run `cargo fmt` in `backend/` before pushing (`cargo fmt --check` reports drift without changing files).
+The "Backend checks" workflow fails if the backend isn't `rustfmt`-clean, has clippy warnings, or has a failing test. Before pushing, run these in `backend/`:
+
+- `cargo fmt` (`cargo fmt --check` reports drift without changing files)
+- `cargo clippy --all-targets -- -D warnings`
+- `cargo test`
 
 ### Frontend (port 3000)
 
