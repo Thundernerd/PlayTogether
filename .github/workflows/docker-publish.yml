@@ -17,13 +17,20 @@ on:
         required: false
         type: string
 
+# The gha build cache and the digest artifacts authenticate with the Actions
+# runtime token and Docker Hub with DOCKERHUB_TOKEN, so GITHUB_TOKEN only needs
+# to read the repo (checkout).
+permissions:
+  contents: read
+
 env:
   DOCKERHUB_USERNAME: tnrd
   # docker/metadata-action tag rules, shared by both jobs so the per-platform
   # image labels (e.g. org.opencontainers.image.version) match the published tags.
+  # `latest` is not in here: only the merge job adds it, and only when the run's
+  # commit is still the tip of main (see "Check for tip of main").
   IMAGE_TAGS: |
     type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' }}
-    type=raw,value=latest,enable={{is_default_branch}}
     type=semver,pattern={{version}}
     type=semver,pattern={{major}}.{{minor}}
     type=sha,prefix=
@@ -123,12 +130,42 @@ jobs:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Runs on main finish in any order, so an older commit's run can finish last.
+      # Only move `latest` when this run's commit is still the tip of main;
+      # otherwise publish the other tags (sha, semver, dispatch) only. If the API
+      # call fails, skip `latest` rather than failing the job, so the sha tag still
+      # gets published.
+      - name: Check for tip of main
+        id: tip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          is_tip=false
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "Not on main ($GITHUB_REF): not tagging latest."
+          elif ! tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha); then
+            echo "::warning::Could not look up the tip of main: not tagging latest."
+          elif [[ "$tip" == "$GITHUB_SHA" ]]; then
+            echo "$GITHUB_SHA is the tip of main: tagging latest."
+            is_tip=true
+          else
+            echo "$GITHUB_SHA is behind main ($tip): not tagging latest."
+          fi
+          echo "is-tip=$is_tip" >> "$GITHUB_OUTPUT"
+
+      # latest=false turns off the `latest` that metadata-action would otherwise add
+      # on v* tag pushes, so `latest` only ever follows the tip of main. The low
+      # priority keeps `version` (and the Inspect step) on the sha, semver or
+      # dispatch tag.
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
-          tags: ${{ env.IMAGE_TAGS }}
+          flavor: latest=false
+          tags: |
+            ${{ env.IMAGE_TAGS }}
+            type=raw,value=latest,priority=50,enable=${{ steps.tip.outputs.is-tip == 'true' }}
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests

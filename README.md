@@ -78,6 +78,15 @@ Run the frontend unit tests (Vitest, under `frontend/test/`) with `npm run test`
 
 The minimum supported version is `engines.node` in `frontend/package.json`; if it changes, update the prerequisite above too.
 
+## Docker images
+
+"Publish Docker images" pushes `tnrd/playtogether-backend` and `tnrd/playtogether-frontend` (used by `docker-compose.yml`) with these tags:
+
+- `<short sha>` for every published run (pushes to `main`, `v*` tags, manual runs)
+- `<version>` and `<major>.<minor>` for `v*` tags
+- the optional extra tag given to a manual run
+- `latest` only for the commit that is the tip of `main` when its run publishes, so a slower run for an older commit never moves `latest` back. `v*` tag pushes don't move `latest`.
+
 ## How it works
 
 1. **Create or join a group** using an invite link (no accounts — a browser token identifies you).
