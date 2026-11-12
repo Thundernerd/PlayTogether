@@ -344,7 +344,8 @@ impl GameCache {
     /// Steam fails for keep the row they had; returns their appids. When a
     /// chunk request fails, its apps are asked for one at a time, unless Steam
     /// rate limited it: then every app in the chunk counts as failed. A rate
-    /// limit while asking one at a time fails the apps not asked for yet.
+    /// limit while asking one at a time, or while asking `appdetails`, fails
+    /// the apps not asked for yet.
     pub async fn fetch_missing<F, Fut>(
         state: &AppState,
         client: &impl SteamStore,
@@ -436,13 +437,19 @@ impl GameCache {
         }
 
         let mut after_details = Vec::new();
-        for appid in after_individual {
+        for (index, &appid) in after_individual.iter().enumerate() {
             match client.fetch_app_details(appid).await {
                 Ok(Some(detail)) => {
                     Self::upsert_from_app_details(state, appid, &detail).await?;
                     progress.record_fetched(1).await;
                 }
                 Ok(None) => after_details.push(appid),
+                Err(error) if error.is_rate_limit() => {
+                    let not_asked = &after_individual[index..];
+                    warn!(?not_asked, %error, "Steam appdetails rate limited; leaving the remaining apps for the next fetch");
+                    progress.record_failed(not_asked).await;
+                    break;
+                }
                 Err(error) => {
                     warn!(appid, %error, "Steam appdetails failed; leaving it for the next fetch");
                     progress.record_failed(&[appid]).await;
@@ -1244,6 +1251,46 @@ mod tests {
 
         assert_eq!(failed, vec![LISTED, FAILING, ONLY_IN_APP_DETAILS]);
         assert_eq!(steam.calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_appdetails_call_fails_the_apps_not_asked_for_yet() {
+        const ALSO_ONLY_IN_APP_DETAILS: u32 = 2005;
+        const UNKNOWN_TO_STEAM: u32 = 2006;
+        let state = test_state(test_db().await);
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .with_app_details(ONLY_IN_APP_DETAILS, "Details only")
+            .with_app_details(ALSO_ONLY_IN_APP_DETAILS, "Also details only")
+            .rate_limiting_every_app_details_call();
+        let left_out_by_get_items = [
+            ONLY_IN_APP_DETAILS,
+            ALSO_ONLY_IN_APP_DETAILS,
+            UNKNOWN_TO_STEAM,
+        ];
+
+        let failed = fetch_missing(
+            &state,
+            &steam,
+            &[
+                LISTED,
+                ONLY_IN_APP_DETAILS,
+                ALSO_ONLY_IN_APP_DETAILS,
+                UNKNOWN_TO_STEAM,
+            ],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(failed, left_out_by_get_items);
+        assert_eq!(steam.app_details_calls(), 1);
+        assert_eq!(
+            stored_name(&state.db, LISTED).await.as_deref(),
+            Some("Listed")
+        );
+        for appid in left_out_by_get_items {
+            assert_eq!(stored_raw_json(&state.db, appid).await, None);
+        }
     }
 
     const STALE: u32 = 3001;

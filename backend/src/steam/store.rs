@@ -72,7 +72,9 @@ pub mod fake {
         failing_when_alone: HashSet<u32>,
         rate_limited: bool,
         rate_limited_when_alone: bool,
+        app_details_rate_limited: bool,
         calls: AtomicUsize,
+        app_details_calls: AtomicUsize,
         gate: Option<Arc<Semaphore>>,
     }
 
@@ -148,6 +150,12 @@ pub mod fake {
             self
         }
 
+        /// Every `appdetails` call fails the way Steam answers with HTTP 429.
+        pub fn rate_limiting_every_app_details_call(mut self) -> Self {
+            self.app_details_rate_limited = true;
+            self
+        }
+
         /// Every call waits until the returned gate is released before it
         /// answers, as calls to a slow Steam would.
         pub fn held(mut self) -> (Self, SteamGate) {
@@ -159,6 +167,11 @@ pub mod fake {
         /// How many calls were made to Steam, held ones included.
         pub fn calls(&self) -> usize {
             self.calls.load(Ordering::SeqCst)
+        }
+
+        /// How many `appdetails` calls were made to Steam, held ones included.
+        pub fn app_details_calls(&self) -> usize {
+            self.app_details_calls.load(Ordering::SeqCst)
         }
 
         /// Counts the call and waits for the gate, if the fake is held.
@@ -226,7 +239,13 @@ pub mod fake {
         }
 
         async fn fetch_app_details(&self, appid: u32) -> AppResult<Option<AppDetailsData>> {
+            self.app_details_calls.fetch_add(1, Ordering::SeqCst);
             self.call().await;
+            if self.app_details_rate_limited {
+                return Err(AppError::SteamRateLimited(
+                    "fake appdetails rate limit".into(),
+                ));
+            }
             self.fail_if_any_failing(&[appid])?;
             if self.failing_app_details.contains(&appid) {
                 return Err(AppError::Steam(format!(
