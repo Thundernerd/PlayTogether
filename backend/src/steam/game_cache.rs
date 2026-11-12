@@ -349,9 +349,10 @@ impl GameCache {
     /// Steam fails for keep the row they had; returns their appids. When a
     /// chunk request fails, its apps are asked for one at a time, unless Steam
     /// rate limited it: then every app in the chunk counts as failed. A rate
-    /// limit while asking one at a time, or
-    /// `MAX_CONSECUTIVE_SINGLE_APP_FAILURES` failures in a row (which look
-    /// like a Steam outage), fails the apps not asked for yet.
+    /// limit while asking one at a time fails the apps not asked for yet.
+    /// `MAX_CONSECUTIVE_SINGLE_APP_FAILURES` failures in a row within one
+    /// failed chunk look like a Steam outage: they fail the rest of that chunk
+    /// without asking for it.
     pub async fn fetch_missing<F, Fut>(
         state: &AppState,
         client: &impl SteamStore,
@@ -384,7 +385,9 @@ impl GameCache {
         let chunk_size = state.config.steam_chunk_size;
         let delay = tokio::time::Duration::from_millis(state.config.steam_chunk_delay_ms);
         let mut progress = WalkProgress::new(total, on_progress);
-        let mut still_missing = Vec::new();
+        // Apps to ask Steam for one at a time: a failed chunk's apps as one
+        // group, and each app a chunk's answer left out as a group of its own.
+        let mut retry_groups: Vec<Vec<u32>> = Vec::new();
 
         for chunk in needs_fetch.chunks(chunk_size) {
             match client.fetch_store_items(chunk).await {
@@ -397,13 +400,13 @@ impl GameCache {
                         if returned.contains(appid) {
                             progress.record_fetched(1).await;
                         } else {
-                            still_missing.push(*appid);
+                            retry_groups.push(vec![*appid]);
                         }
                     }
                 }
                 Err(error) if chunk.len() > 1 && !error.is_rate_limit() => {
                     warn!(?chunk, %error, "Steam GetItems failed for chunk; retrying its apps one at a time");
-                    still_missing.extend_from_slice(chunk);
+                    retry_groups.push(chunk.to_vec());
                 }
                 Err(error) => {
                     warn!(?chunk, %error, "Steam GetItems failed for chunk; leaving it for the next fetch");
@@ -417,40 +420,47 @@ impl GameCache {
         }
 
         let mut after_individual = Vec::new();
-        let mut consecutive_failures = 0;
-        for (index, &appid) in still_missing.iter().enumerate() {
-            match client.fetch_store_items(&[appid]).await {
-                Ok(items) => {
-                    consecutive_failures = 0;
-                    let items = Self::requested_items(&[appid], items);
-                    if items.is_empty() {
-                        after_individual.push(appid);
-                    } else {
-                        Self::upsert_items(state, &items).await?;
-                        progress.record_fetched(1).await;
-                    }
-                }
-                Err(error) if error.is_rate_limit() => {
-                    let not_asked = &still_missing[index..];
-                    warn!(?not_asked, %error, "Steam GetItems rate limited; leaving the remaining apps for the next fetch");
-                    progress.record_failed(not_asked).await;
-                    break;
-                }
-                Err(error) => {
-                    warn!(appid, %error, "Steam GetItems failed for app; leaving it for the next fetch");
-                    progress.record_failed(&[appid]).await;
-                    consecutive_failures += 1;
-                    if consecutive_failures == MAX_CONSECUTIVE_SINGLE_APP_FAILURES {
-                        let not_asked = &still_missing[index + 1..];
-                        if !not_asked.is_empty() {
-                            warn!(?not_asked, "Steam GetItems keeps failing; leaving the remaining apps for the next fetch");
-                            progress.record_failed(not_asked).await;
+        'groups: for (group_index, group) in retry_groups.iter().enumerate() {
+            let mut consecutive_failures = 0;
+            for (index, &appid) in group.iter().enumerate() {
+                match client.fetch_store_items(&[appid]).await {
+                    Ok(items) => {
+                        consecutive_failures = 0;
+                        let items = Self::requested_items(&[appid], items);
+                        if items.is_empty() {
+                            after_individual.push(appid);
+                        } else {
+                            Self::upsert_items(state, &items).await?;
+                            progress.record_fetched(1).await;
                         }
-                        break;
+                    }
+                    Err(error) if error.is_rate_limit() => {
+                        let not_asked: Vec<u32> = group[index..]
+                            .iter()
+                            .chain(retry_groups[group_index + 1..].iter().flatten())
+                            .copied()
+                            .collect();
+                        warn!(?not_asked, %error, "Steam GetItems rate limited; leaving the remaining apps for the next fetch");
+                        progress.record_failed(&not_asked).await;
+                        break 'groups;
+                    }
+                    Err(error) => {
+                        warn!(appid, %error, "Steam GetItems failed for app; leaving it for the next fetch");
+                        progress.record_failed(&[appid]).await;
+                        consecutive_failures += 1;
+                        if consecutive_failures == MAX_CONSECUTIVE_SINGLE_APP_FAILURES {
+                            let not_asked = &group[index + 1..];
+                            if !not_asked.is_empty() {
+                                warn!(?not_asked, "Steam GetItems keeps failing; leaving the rest of the chunk for the next fetch");
+                                progress.record_failed(not_asked).await;
+                            }
+                            tokio::time::sleep(delay).await;
+                            break;
+                        }
                     }
                 }
+                tokio::time::sleep(delay).await;
             }
-            tokio::time::sleep(delay).await;
         }
 
         let mut after_details = Vec::new();
@@ -1316,6 +1326,64 @@ mod tests {
         assert_eq!(
             stored_name(&state.db, ONLY_IN_APP_DETAILS).await.as_deref(),
             Some("Details only")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_steam_outage_in_one_chunk_does_not_fail_apps_a_later_chunk_left_out() {
+        let mut state = test_state(test_db().await);
+        state.config.steam_chunk_size = 3;
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .with_app_details(ONLY_IN_APP_DETAILS, "Details only")
+            .failing_every_call_for(UNCACHED_A)
+            .failing_every_call_for(UNCACHED_B)
+            .failing_every_call_for(UNCACHED_C);
+
+        let failed = fetch_missing(
+            &state,
+            &steam,
+            &[
+                UNCACHED_A,
+                UNCACHED_B,
+                UNCACHED_C,
+                LISTED,
+                ONLY_IN_APP_DETAILS,
+            ],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(failed, vec![UNCACHED_A, UNCACHED_B, UNCACHED_C]);
+        assert_eq!(
+            stored_name(&state.db, ONLY_IN_APP_DETAILS).await.as_deref(),
+            Some("Details only")
+        );
+    }
+
+    #[tokio::test]
+    async fn failures_in_one_failed_chunk_do_not_count_towards_the_next_chunks_retry_limit() {
+        let mut state = test_state(test_db().await);
+        state.config.steam_chunk_size = 3;
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .with_store_item(UNCACHED_D, "Also listed")
+            .failing_every_call_for(UNCACHED_A)
+            .failing_every_call_for(UNCACHED_B)
+            .failing_every_call_for(UNCACHED_C);
+
+        let failed = fetch_missing(
+            &state,
+            &steam,
+            &[LISTED, UNCACHED_A, UNCACHED_B, UNCACHED_C, UNCACHED_D],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(failed, vec![UNCACHED_A, UNCACHED_B, UNCACHED_C]);
+        assert_eq!(
+            stored_name(&state.db, UNCACHED_D).await.as_deref(),
+            Some("Also listed")
         );
     }
 
