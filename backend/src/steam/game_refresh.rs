@@ -164,9 +164,10 @@ pub struct FetchClaim<'a> {
     pub in_flight_elsewhere: Vec<InFlightFetch>,
 }
 
-/// The appids one list load fetches from Steam. Dropping it, whether the
-/// fetch finished, failed or was cancelled, releases them and wakes the list
-/// loads waiting for them.
+/// The appids one list load fetches from Steam. `release` gives up the claim
+/// on the ones the fetch has settled. Dropping it, whether the fetch
+/// finished, failed or was cancelled, releases the rest. Releasing an appid
+/// wakes the list loads waiting for it.
 pub struct OwnedFetch<'a> {
     queue: &'a GameRefreshQueue,
     appids: Vec<u32>,
@@ -177,6 +178,20 @@ impl OwnedFetch<'_> {
     /// fetching all of the ones it asked for.
     pub fn appids(&self) -> &[u32] {
         &self.appids
+    }
+
+    /// Releases the claim on the `appids` this list load is done fetching,
+    /// before the rest of its fetch has finished. Appids it does not hold are
+    /// ignored, so a claim another list load has taken since stays.
+    pub fn release(&mut self, appids: &[u32]) {
+        let mut state = self.queue.state();
+        self.appids.retain(|appid| {
+            let settled = appids.contains(appid);
+            if settled {
+                state.fetching.remove(appid);
+            }
+            !settled
+        });
     }
 }
 
