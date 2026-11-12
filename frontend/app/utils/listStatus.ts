@@ -1,11 +1,16 @@
 import type { SyncJobStatus } from '~/types/api'
 
+/** A list's first load is in flight: only then do list pages and counts show a spinner. */
+function isFirstLoad(list: { loaded: boolean; loading: boolean }): boolean {
+  return list.loading && !list.loaded
+}
+
 // What a list page shows, checked in this order. 'items' wins whenever there is something to
 // show. 'failed' only covers a list that never loaded, and holds steady while a retry or
 // poll of it runs: a failed refresh of a loaded list keeps its status, and the page adds a
 // non-blocking "couldn't refresh" line (countStatus 'stale'). Likewise 'loading' only covers
-// a list's first load, so poll, vote, rate and selection refreshes keep the current text (such as
-// 'syncing' or 'empty') instead of swapping it for a spinner.
+// a list's first load, so poll, vote, rate and selection refreshes keep the current text
+// (such as 'syncing' or 'empty') instead of swapping it for a spinner.
 export type ListStatus = 'items' | 'failed' | 'loading' | 'syncing' | 'empty' | 'not-synced'
 
 export function listStatus(list: {
@@ -27,7 +32,7 @@ export function listStatus(list: {
 }): ListStatus {
   if (list.itemCount > 0) return 'items'
   if (list.error && !list.loaded) return 'failed'
-  if (list.loading && !list.loaded) return 'loading'
+  if (isFirstLoad(list)) return 'loading'
   if (!list.sync) return 'empty'
   if (list.sync.status === 'running') return 'syncing'
   if (list.sync.complete) return 'empty'
@@ -49,6 +54,6 @@ export function countStatus(list: {
   error: string | null
 }): CountStatus {
   if (list.error) return list.loaded ? 'stale' : 'failed'
-  if (list.loading && !list.loaded) return 'loading'
+  if (isFirstLoad(list)) return 'loading'
   return 'count'
 }
