@@ -27,9 +27,8 @@ impl SteamClient {
             .get(WISHLIST_URL)
             .query(&[("steamid", steam_id.to_string())])
             .send()
-            .await?
-            .error_for_status()
-            .map_err(|e| AppError::Steam(format!("wishlist request failed: {e}")))?;
+            .await?;
+        let response = check_status(response, "wishlist")?;
 
         let body: WishlistResponse = response.json().await?;
 
@@ -52,9 +51,8 @@ impl SteamClient {
                 ("skip_unvetted_apps", "0"),
             ])
             .send()
-            .await?
-            .error_for_status()
-            .map_err(|e| AppError::Steam(format!("owned games request failed: {e}")))?;
+            .await?;
+        let response = check_status(response, "owned games")?;
 
         let body: OwnedGamesResponse = response.json().await?;
 
@@ -100,14 +98,7 @@ impl SteamClient {
             .query(&[("input_json", input_json.to_string())])
             .send()
             .await?;
-        if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            return Err(AppError::SteamRateLimited(
-                "GetItems request was rate limited (HTTP 429)".into(),
-            ));
-        }
-        let response = response
-            .error_for_status()
-            .map_err(|e| AppError::Steam(format!("GetItems request failed: {e}")))?;
+        let response = check_status(response, "GetItems")?;
 
         let body: GetItemsResponse = response.json().await?;
         Ok(store_items_from_response(appids, body))
@@ -119,9 +110,8 @@ impl SteamClient {
             .get(TAG_LIST_URL)
             .query(&[("language", "english")])
             .send()
-            .await?
-            .error_for_status()
-            .map_err(|e| AppError::Steam(format!("GetTagList request failed: {e}")))?;
+            .await?;
+        let response = check_status(response, "GetTagList")?;
 
         response.json().await.map_err(AppError::from)
     }
@@ -138,13 +128,26 @@ impl SteamClient {
                 ("filters", String::from("basic,release_date")),
             ])
             .send()
-            .await?
-            .error_for_status()
-            .map_err(|e| AppError::Steam(format!("appdetails request failed: {e}")))?;
+            .await?;
+        let response = check_status(response, "appdetails")?;
 
         let body: HashMap<String, AppDetailsEntry> = response.json().await?;
         Ok(app_details_from_response(appid, body))
     }
+}
+
+/// Turns an HTTP error status from Steam into an error: HTTP 429 into
+/// `AppError::SteamRateLimited`, so callers can stop sending requests, and
+/// any other error status into `AppError::Steam`.
+fn check_status(response: reqwest::Response, request_name: &str) -> AppResult<reqwest::Response> {
+    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err(AppError::SteamRateLimited(format!(
+            "{request_name} request was rate limited (HTTP 429)"
+        )));
+    }
+    response
+        .error_for_status()
+        .map_err(|e| AppError::Steam(format!("{request_name} request failed: {e}")))
 }
 
 #[derive(Debug, Deserialize)]
