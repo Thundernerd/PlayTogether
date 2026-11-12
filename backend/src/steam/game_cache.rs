@@ -24,6 +24,11 @@ use crate::steam::store::SteamStore;
 
 pub struct GameCache;
 
+/// How many single-app `GetItems` retries in a row may fail before the rest
+/// of a failed chunk's apps count as failed without asking Steam. That many
+/// failures in a row point at a Steam outage rather than at one app.
+const MAX_CONSECUTIVE_SINGLE_APP_FAILURES: usize = 3;
+
 /// Which `steam_games` rows to match by `fetched_at`.
 #[derive(Clone, Copy)]
 enum FetchedAt {
@@ -344,7 +349,9 @@ impl GameCache {
     /// Steam fails for keep the row they had; returns their appids. When a
     /// chunk request fails, its apps are asked for one at a time, unless Steam
     /// rate limited it: then every app in the chunk counts as failed. A rate
-    /// limit while asking one at a time fails the apps not asked for yet.
+    /// limit while asking one at a time, or
+    /// `MAX_CONSECUTIVE_SINGLE_APP_FAILURES` failures in a row (which look
+    /// like a Steam outage), fails the apps not asked for yet.
     pub async fn fetch_missing<F, Fut>(
         state: &AppState,
         client: &impl SteamStore,
@@ -410,9 +417,11 @@ impl GameCache {
         }
 
         let mut after_individual = Vec::new();
+        let mut consecutive_failures = 0;
         for (index, &appid) in still_missing.iter().enumerate() {
             match client.fetch_store_items(&[appid]).await {
                 Ok(items) => {
+                    consecutive_failures = 0;
                     let items = Self::requested_items(&[appid], items);
                     if items.is_empty() {
                         after_individual.push(appid);
@@ -430,6 +439,15 @@ impl GameCache {
                 Err(error) => {
                     warn!(appid, %error, "Steam GetItems failed for app; leaving it for the next fetch");
                     progress.record_failed(&[appid]).await;
+                    consecutive_failures += 1;
+                    if consecutive_failures == MAX_CONSECUTIVE_SINGLE_APP_FAILURES {
+                        let not_asked = &still_missing[index + 1..];
+                        if !not_asked.is_empty() {
+                            warn!(?not_asked, "Steam GetItems keeps failing; leaving the remaining apps for the next fetch");
+                            progress.record_failed(not_asked).await;
+                        }
+                        break;
+                    }
                 }
             }
             tokio::time::sleep(delay).await;
@@ -1244,6 +1262,49 @@ mod tests {
 
         assert_eq!(failed, vec![LISTED, FAILING, ONLY_IN_APP_DETAILS]);
         assert_eq!(steam.calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_steam_outage_stops_retrying_a_failed_chunk_one_app_at_a_time() {
+        let state = test_state(test_db().await);
+        let steam = FakeSteam::new().failing_every_store_items_call();
+        let appids = [4001, 4002, 4003, 4004, 4005];
+
+        let failed = fetch_missing(&state, &steam, &appids).await.unwrap();
+
+        assert_eq!(failed, appids.to_vec());
+        // The chunk request, then three single-app retries before giving up.
+        assert_eq!(steam.calls(), 1 + 3);
+    }
+
+    #[tokio::test]
+    async fn apps_steam_keeps_failing_for_do_not_stop_the_retries_while_others_in_between_succeed()
+    {
+        let state = test_state(test_db().await);
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .with_app_details(ONLY_IN_APP_DETAILS, "Details only")
+            .failing_every_call_for(4001)
+            .failing_every_call_for(4002)
+            .failing_every_call_for(4003);
+
+        let failed = fetch_missing(
+            &state,
+            &steam,
+            &[4001, 4002, LISTED, 4003, ONLY_IN_APP_DETAILS],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(failed, vec![4001, 4002, 4003]);
+        assert_eq!(
+            stored_name(&state.db, LISTED).await.as_deref(),
+            Some("Listed")
+        );
+        assert_eq!(
+            stored_name(&state.db, ONLY_IN_APP_DETAILS).await.as_deref(),
+            Some("Details only")
+        );
     }
 
     const STALE: u32 = 3001;
