@@ -18,7 +18,8 @@ on:
         type: string
 
 # The gha build cache and the digest artifacts authenticate with the Actions
-# runtime token and Docker Hub with DOCKERHUB_TOKEN, so GITHUB_TOKEN only reads.
+# runtime token and Docker Hub with DOCKERHUB_TOKEN, so GITHUB_TOKEN only needs
+# to read the repo (checkout).
 permissions:
   contents: read
 
