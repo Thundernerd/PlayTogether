@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1
 
-# Keep in sync with backend/rust-toolchain.toml.
-FROM rust:1.99.1-bookworm AS builder
+# Keep in step with `channel` in backend/rust-toolchain.toml; the build fails if they differ.
+ARG RUST_VERSION=1.99.1
+
+FROM rust:${RUST_VERSION}-bookworm AS builder
+ARG RUST_VERSION
 
 WORKDIR /app
 
@@ -9,11 +12,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libsqlite3-dev pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# The image tag already provides the pinned rustc; this installs the pinned
-# components (rustfmt, clippy) in a cached layer. If the tag ever drifts from
-# rust-toolchain.toml, rustup installs the pinned version here instead.
+# The image tag provides the pinned rustc; this checks it matches
+# rust-toolchain.toml and installs the pinned components (rustfmt, clippy)
+# in a cached layer, so cargo doesn't fetch them on every source change.
 COPY rust-toolchain.toml ./
-RUN rustup toolchain install && rustup show active-toolchain
+RUN pinned="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)" \
+    && if [ "$pinned" != "$RUST_VERSION" ]; then \
+         echo "RUST_VERSION ($RUST_VERSION) does not match rust-toolchain.toml ($pinned)" >&2; exit 1; \
+       fi \
+    && rustup toolchain install \
+    && rustup show active-toolchain
 
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src

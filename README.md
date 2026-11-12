@@ -39,7 +39,12 @@ Environment variables (optional):
 
 If you have an existing `playwishlist.db` from a previous install, rename it to `playtogether.db` or set `DATABASE_URL=sqlite:playwishlist.db?mode=rwc`.
 
-The Rust version is pinned in `backend/rust-toolchain.toml`; rustup installs and uses it automatically in `backend/`, and the "Backend checks" workflow installs it from that file. To bump it, change `channel` there and the `rust:<version>-bookworm` tag in `backend/Dockerfile` to match, then run `cargo fmt` and `cargo clippy --all-targets` and fix anything the new version reports.
+`backend/rust-toolchain.toml` is the source of truth for the Rust version. rustup installs and uses it automatically in `backend/`, and so does the "Backend checks" workflow. To bump the version, edit:
+
+- `channel` in `backend/rust-toolchain.toml`
+- the `RUST_VERSION` build arg default in `backend/Dockerfile` (the Docker build fails if the two differ)
+
+Then run `cargo fmt` and `cargo clippy --all-targets` in `backend/` and fix anything the new version reports.
 
 CI fails if the backend isn't `rustfmt`-clean: run `cargo fmt` in `backend/` before pushing (`cargo fmt --check` reports drift without changing files).
 
