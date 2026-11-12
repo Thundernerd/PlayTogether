@@ -17,6 +17,11 @@ on:
         required: false
         type: string
 
+# The gha build cache and the digest artifacts authenticate with the Actions
+# runtime token and Docker Hub with DOCKERHUB_TOKEN, so GITHUB_TOKEN only reads.
+permissions:
+  contents: read
+
 env:
   DOCKERHUB_USERNAME: tnrd
   # docker/metadata-action tag rules, shared by both jobs so the per-platform
