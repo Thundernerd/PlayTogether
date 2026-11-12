@@ -140,8 +140,19 @@ export function useGroup() {
 
   // The failed-state retry button. List failures land in their own error state; a failed
   // group reload only leaves the header stale, so it isn't surfaced as an unhandled rejection.
-  function retryListLoads() {
-    refreshMemberData().catch(() => {})
+  // A click while a poll's request is in flight joins it, but that request started before the
+  // click, so once it settles each joined list that still failed is loaded again; otherwise
+  // the click would be lost. A list whose request the click started is loaded only once.
+  // The joined list requests are awaited on their own because the refresh rejects as soon as
+  // the group reload fails, possibly before they settle (they never reject).
+  async function retryListLoads() {
+    const joined = LIST_KEYS.filter((key) => inflight.refresh || inflight[key])
+    const joinedRequests = joined.map((key) => inflight[key])
+    await refreshMemberData().catch(() => {})
+    await Promise.all(joinedRequests)
+    await Promise.all(
+      joined.filter((key) => lists.value[key].error !== null).map((key) => loadList(key)),
+    )
   }
 
   async function ensureLoaded(options: { wishlists?: boolean; libraries?: boolean; shared?: boolean } = {}) {

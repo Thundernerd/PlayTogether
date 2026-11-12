@@ -70,9 +70,12 @@ pub mod fake {
         failing_every_call: HashSet<u32>,
         failing_app_details: HashSet<u32>,
         failing_when_alone: HashSet<u32>,
-        rate_limited: bool,
-        rate_limited_when_alone: bool,
+        fails_every_store_items_call: bool,
+        store_items_rate_limited: bool,
+        store_items_rate_limited_when_alone: bool,
+        app_details_rate_limited: bool,
         calls: AtomicUsize,
+        app_details_calls: AtomicUsize,
         gate: Option<Arc<Semaphore>>,
     }
 
@@ -135,16 +138,29 @@ pub mod fake {
             self
         }
 
+        /// Every `GetItems` call fails, as an HTTP 5xx or a lost connection
+        /// would during a Steam outage.
+        pub fn failing_every_store_items_call(mut self) -> Self {
+            self.fails_every_store_items_call = true;
+            self
+        }
+
         /// Every `GetItems` call fails the way Steam answers with HTTP 429.
         pub fn rate_limiting_every_store_items_call(mut self) -> Self {
-            self.rate_limited = true;
+            self.store_items_rate_limited = true;
             self
         }
 
         /// `GetItems` fails the way Steam answers with HTTP 429 when asked for
         /// one app on its own.
         pub fn rate_limiting_store_items_calls_for_one_app(mut self) -> Self {
-            self.rate_limited_when_alone = true;
+            self.store_items_rate_limited_when_alone = true;
+            self
+        }
+
+        /// Every `appdetails` call fails the way Steam answers with HTTP 429.
+        pub fn rate_limiting_every_app_details_call(mut self) -> Self {
+            self.app_details_rate_limited = true;
             self
         }
 
@@ -159,6 +175,11 @@ pub mod fake {
         /// How many calls were made to Steam, held ones included.
         pub fn calls(&self) -> usize {
             self.calls.load(Ordering::SeqCst)
+        }
+
+        /// How many `appdetails` calls were made to Steam, held ones included.
+        pub fn app_details_calls(&self) -> usize {
+            self.app_details_calls.load(Ordering::SeqCst)
         }
 
         /// Counts the call and waits for the gate, if the fake is held.
@@ -183,10 +204,15 @@ pub mod fake {
         }
 
         fn store_items_for(&self, appids: &[u32]) -> AppResult<Vec<StoreItem>> {
-            if self.rate_limited || (self.rate_limited_when_alone && appids.len() == 1) {
+            if self.store_items_rate_limited
+                || (self.store_items_rate_limited_when_alone && appids.len() == 1)
+            {
                 return Err(AppError::SteamRateLimited(
                     "fake GetItems rate limit".into(),
                 ));
+            }
+            if self.fails_every_store_items_call {
+                return Err(AppError::Steam("fake GetItems outage".into()));
             }
             self.fail_if_any_failing(appids)?;
             if let [appid] = appids {
@@ -226,7 +252,13 @@ pub mod fake {
         }
 
         async fn fetch_app_details(&self, appid: u32) -> AppResult<Option<AppDetailsData>> {
+            self.app_details_calls.fetch_add(1, Ordering::SeqCst);
             self.call().await;
+            if self.app_details_rate_limited {
+                return Err(AppError::SteamRateLimited(
+                    "fake appdetails rate limit".into(),
+                ));
+            }
             self.fail_if_any_failing(&[appid])?;
             if self.failing_app_details.contains(&appid) {
                 return Err(AppError::Steam(format!(
