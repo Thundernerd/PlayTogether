@@ -122,3 +122,102 @@ describe('useGroup retryListLoads (Try again)', () => {
     expect(useMemberLists().value.libraries.error).toBeNull()
   })
 })
+
+describe('useGroup leaving while a refresh is in flight', () => {
+  const groupPath = '/api/groups/by-invite/'
+  const isGroup = (url: string) => url.includes(groupPath)
+  const leftGroup = { group: { name: 'Left group' }, members: [{}] }
+
+  beforeEach(() => {
+    api.mockReset()
+    api.mockResolvedValue([])
+    vi.stubGlobal('confirm', () => true)
+    useState<MeResponse | null>('groupMe').value = {
+      group: { id: GROUP_ID, invite_code: 'ABC' },
+      member: { id: 'member-1' },
+    } as unknown as MeResponse
+    useState('groupDetail').value = leftGroup
+    useMemberLists().value = emptyMemberLists()
+  })
+
+  it('does not write the left group back when the refresh settles', async () => {
+    const pendingGroup = deferred<typeof leftGroup>()
+    api.mockImplementation((url: string) =>
+      isGroup(url) ? pendingGroup.promise : Promise.resolve([]),
+    )
+    const group = useGroup()
+
+    const poll = group.refreshMemberData()
+    await group.leaveGroup()
+    pendingGroup.resolve(leftGroup)
+    await poll
+
+    expect(group.groupDetail.value).toBeNull()
+  })
+
+  it('does not write the deleted group back when the refresh settles', async () => {
+    const pendingGroup = deferred<typeof leftGroup>()
+    api.mockImplementation((url: string) =>
+      isGroup(url) ? pendingGroup.promise : Promise.resolve([]),
+    )
+    const group = useGroup()
+
+    const poll = group.refreshMemberData()
+    await group.deleteGroup()
+    pendingGroup.resolve(leftGroup)
+    await poll
+
+    expect(group.groupDetail.value).toBeNull()
+  })
+
+  it('starts fresh requests for a refresh after the leave instead of joining the old one', async () => {
+    const pendingGroup = deferred<typeof leftGroup>()
+    api.mockImplementation((url: string) =>
+      isGroup(url) ? pendingGroup.promise : Promise.resolve([]),
+    )
+    const group = useGroup()
+
+    const poll = group.refreshMemberData()
+    await group.leaveGroup()
+    useState<MeResponse | null>('groupMe').value = {
+      group: { id: GROUP_ID, invite_code: 'ABC' },
+      member: { id: 'member-1' },
+    } as unknown as MeResponse
+    const groupCallsBefore = api.mock.calls.filter(([url]) => isGroup(url)).length
+    const librariesBefore = librariesCalls()
+    const next = group.refreshMemberData()
+
+    expect(api.mock.calls.filter(([url]) => isGroup(url)).length).toBe(groupCallsBefore + 1)
+    expect(librariesCalls()).toBe(librariesBefore + 1)
+    pendingGroup.resolve(leftGroup)
+    await poll
+    await next
+  })
+
+  it('lets a poll join the new refresh even after the old one settles', async () => {
+    const oldGroup = deferred<typeof leftGroup>()
+    const newGroup = deferred<typeof leftGroup>()
+    let groupRequests = 0
+    api.mockImplementation((url: string) => {
+      if (!isGroup(url)) return Promise.resolve([])
+      return ++groupRequests === 1 ? oldGroup.promise : newGroup.promise
+    })
+    const group = useGroup()
+
+    const oldPoll = group.refreshMemberData()
+    await group.leaveGroup()
+    useState<MeResponse | null>('groupMe').value = {
+      group: { id: GROUP_ID, invite_code: 'ABC' },
+      member: { id: 'member-1' },
+    } as unknown as MeResponse
+    const refresh = group.refreshMemberData()
+    oldGroup.resolve(leftGroup)
+    await oldPoll
+    const poll = group.refreshMemberData()
+
+    expect(groupRequests).toBe(2)
+    newGroup.resolve(leftGroup)
+    await refresh
+    await poll
+  })
+})
