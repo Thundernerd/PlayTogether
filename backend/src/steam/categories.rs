@@ -51,10 +51,7 @@ mod tests {
     }
 
     fn supports_multiplayer_together(modes: &GamePlayModes) -> bool {
-        modes.online_coop
-            || modes.coop
-            || modes.multiplayer
-            || modes.remote_play_together
+        modes.online_coop || modes.coop || modes.multiplayer || modes.remote_play_together
     }
 
     #[test]

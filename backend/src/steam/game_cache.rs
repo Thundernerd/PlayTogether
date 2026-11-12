@@ -1,23 +1,24 @@
-use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Duration, Utc};
 use sqlx::SqlitePool;
+use std::collections::{HashMap, HashSet};
 use tracing::{info, warn};
 
 use crate::error::{AppError, AppResult};
 use crate::models::{GameDetail, GameInfo, GamePlayModes, GamePrice, GameTrailer};
 use crate::state::AppState;
-use crate::steam::client::{
-    AppDetailsData, SteamClient, StoreItem, derive_is_released, derive_is_released_from_app_details,
-    store_item_has_details,
-};
 use crate::steam::categories::play_modes_from_item;
-use crate::steam::store::SteamStore;
-use crate::steam::pricing::price_from_store_item;
-use crate::steam::media_urls::{
-    collect_trailers, header_image_url, header_image_url_from_app_details, header_image_url_from_item,
-    is_allowed_video_cdn_url, normalize_header_image_url, screenshot_urls_from_item, trailer_entries,
-    trailer_proxy_video_url, trailer_video_mp4_url, trailer_video_webm_url, STORE_ASSETS_BASE,
+use crate::steam::client::{
+    derive_is_released, derive_is_released_from_app_details, store_item_has_details,
+    AppDetailsData, SteamClient, StoreItem,
 };
+use crate::steam::media_urls::{
+    collect_trailers, header_image_url, header_image_url_from_app_details,
+    header_image_url_from_item, is_allowed_video_cdn_url, normalize_header_image_url,
+    screenshot_urls_from_item, trailer_entries, trailer_proxy_video_url, trailer_video_mp4_url,
+    trailer_video_webm_url, STORE_ASSETS_BASE,
+};
+use crate::steam::pricing::price_from_store_item;
+use crate::steam::store::SteamStore;
 
 pub struct GameCache;
 
@@ -58,12 +59,9 @@ impl GameCache {
     async fn get_due_appids(state: &AppState, appids: &[u32]) -> AppResult<HashSet<u32>> {
         let cached =
             Self::get_cached_appids(&state.db, appids, state.config.game_cache_ttl_days).await?;
-        let price_stale = Self::get_price_stale_appids(
-            &state.db,
-            appids,
-            state.config.price_cache_ttl_hours,
-        )
-        .await?;
+        let price_stale =
+            Self::get_price_stale_appids(&state.db, appids, state.config.price_cache_ttl_hours)
+                .await?;
         Ok(appids
             .iter()
             .copied()
@@ -137,7 +135,11 @@ impl GameCache {
         let items = client.fetch_store_item_details(appid).await?;
         if items.is_empty() {
             // Steam no longer lists the app; show what the cache already has.
-            return if row.is_some() { Ok(()) } else { Err(AppError::NotFound) };
+            return if row.is_some() {
+                Ok(())
+            } else {
+                Err(AppError::NotFound)
+            };
         }
 
         Self::upsert_items(state, &items).await?;
@@ -159,10 +161,9 @@ impl GameCache {
         index: usize,
         webm: bool,
     ) -> AppResult<String> {
-        let row = Self::load_row(db, appid)
-            .await?
-            .ok_or(AppError::NotFound)?;
-        let item = serde_json::from_str::<StoreItem>(&row.raw_json).map_err(|_| AppError::NotFound)?;
+        let row = Self::load_row(db, appid).await?.ok_or(AppError::NotFound)?;
+        let item =
+            serde_json::from_str::<StoreItem>(&row.raw_json).map_err(|_| AppError::NotFound)?;
         let trailers = item.trailers.as_ref().ok_or(AppError::NotFound)?;
         let trailer = collect_trailers(trailers)
             .get(index)
@@ -246,7 +247,10 @@ impl GameCache {
     async fn refresh_queued(state: &AppState, client: &impl SteamStore) {
         let mut worker = state.game_refresh.start_worker();
         while let Some(batch) = worker.next_batch() {
-            info!(count = batch.len(), "refreshing stale game cache rows in the background");
+            info!(
+                count = batch.len(),
+                "refreshing stale game cache rows in the background"
+            );
             match Self::fetch_missing(state, client, &batch, |_, _| async {}).await {
                 Ok(failed) => state.game_refresh.record_failed(&failed),
                 Err(error) => {
@@ -477,13 +481,7 @@ impl GameCache {
         };
         let short_description = detail.short_description.clone().unwrap_or_default();
         let header_image_url = header_image_url_from_app_details(detail).unwrap_or_else(|| {
-            normalize_header_image_url(
-                detail
-                    .header_image
-                    .as_deref()
-                    .unwrap_or(""),
-                appid,
-            )
+            normalize_header_image_url(detail.header_image.as_deref().unwrap_or(""), appid)
         });
         let raw_json = serde_json::to_string(detail)?;
         let is_released = derive_is_released_from_app_details(detail);
@@ -717,10 +715,7 @@ fn price_from_raw_json(raw_json: &str) -> Option<GamePrice> {
         .and_then(|item| price_from_store_item(&item))
 }
 
-pub async fn load_games_map(
-    db: &SqlitePool,
-    appids: &[u32],
-) -> AppResult<HashMap<u32, GameInfo>> {
+pub async fn load_games_map(db: &SqlitePool, appids: &[u32]) -> AppResult<HashMap<u32, GameInfo>> {
     let mut map = HashMap::new();
     for appid in appids {
         if let Some(game) = GameCache::load_game(db, *appid).await? {
@@ -791,9 +786,9 @@ mod tests {
 
     use crate::config::Config;
     use crate::jobs::registry::SyncJobRegistry;
-    use crate::steam::GameRefreshQueue;
     use crate::steam::game_refresh::{ManualClock, FAILED_FETCH_COOLDOWN};
     use crate::steam::store::fake::FakeSteam;
+    use crate::steam::GameRefreshQueue;
 
     const PRICE_TTL_HOURS: i64 = 24;
     const GAME_TTL_DAYS: i64 = 7;
@@ -929,7 +924,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn recently_fetched_rows_are_not_price_stale_even_when_steam_returned_no_price_or_categories() {
+    async fn recently_fetched_rows_are_not_price_stale_even_when_steam_returned_no_price_or_categories(
+    ) {
         let db = test_db().await;
         insert_rows_steam_never_completes(&db, Utc::now()).await;
 

@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS builder
+# Keep the major in step with frontend/.nvmrc.
+ARG NODE_VERSION=22
+
+FROM node:${NODE_VERSION}-alpine AS builder
 
 WORKDIR /app
 
@@ -10,7 +13,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine AS runtime
+FROM node:${NODE_VERSION}-alpine AS runtime
 
 WORKDIR /app
 

@@ -17,7 +17,12 @@ const {
   toggleSelection,
   retryListLoads,
 } = group
-const { loading: wishlistsLoading, error: wishlistsError } = useMemberList('wishlists')
+const {
+  loaded: wishlistsLoaded,
+  loading: wishlistsLoading,
+  error: wishlistsError,
+  refreshFailed: wishlistsRefreshFailed,
+} = useMemberList('wishlists')
 const { startPolling, stopPolling } = useSyncStatus(group.onSyncUpdate)
 const { open: openGameDetail } = useGameDetail()
 
@@ -30,7 +35,7 @@ const wishlistSort = ref<WishlistSort>('date_desc')
 const status = computed(() =>
   listStatus({
     itemCount: myWishlist.value?.items.length ?? 0,
-    loaded: !!myWishlist.value,
+    loaded: wishlistsLoaded.value,
     loading: wishlistsLoading.value,
     error: wishlistsError.value,
     sync: {
@@ -109,6 +114,8 @@ onUnmounted(stopPolling)
       <div v-if="myWishlist?.member.sync_status.status === 'running'" class="sync-banner">
         <SyncStatusBadge :status="myWishlist.member.sync_status" />
       </div>
+
+      <ListRefreshFailed v-if="wishlistsRefreshFailed" @retry="retryListLoads" />
 
       <template v-if="status === 'items' && myWishlist">
         <div class="wishlist-toolbar">

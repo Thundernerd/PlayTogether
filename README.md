@@ -38,6 +38,8 @@ Environment variables (optional):
 
 If you have an existing `playwishlist.db` from a previous install, rename it to `playtogether.db` or set `DATABASE_URL=sqlite:playwishlist.db?mode=rwc`.
 
+CI fails if the backend isn't `rustfmt`-clean: run `cargo fmt` in `backend/` before pushing (`cargo fmt --check` reports drift without changing files).
+
 ### Frontend (port 3000)
 
 ```bash
@@ -51,6 +53,14 @@ Set `BACKEND_URL=http://localhost:8080` if the API runs elsewhere.
 Type-check the frontend (including `.vue` files) with `npm run typecheck`; `npm run build` does not type-check.
 
 Run the frontend unit tests (Vitest, under `frontend/test/`) with `npm run test`.
+
+`frontend/.nvmrc` is the source of truth for the frontend's Node major. `nvm use` reads it, and so does the "Frontend checks" workflow. To change the major, edit:
+
+- `frontend/.nvmrc`
+- the `NODE_VERSION` build arg default in `frontend/Dockerfile`
+- the `node:<major>-alpine` image tag in `docker-compose.dev.yml` (compose can't read `.nvmrc`)
+
+The minimum supported version is `engines.node` in `frontend/package.json`; if it changes, update the prerequisite above too.
 
 ## How it works
 
