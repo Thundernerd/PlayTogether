@@ -44,9 +44,13 @@ If you have an existing `playwishlist.db` from a previous install, rename it to 
 - `channel` in `backend/rust-toolchain.toml`
 - the `RUST_VERSION` build arg default in `backend/Dockerfile` (the Docker build fails if the two differ)
 
-Then run `cargo fmt` and `cargo clippy --all-targets` in `backend/` and fix anything the new version reports.
+Then run the checks below in `backend/` and fix anything the new version reports.
 
-CI fails if the backend isn't `rustfmt`-clean: run `cargo fmt` in `backend/` before pushing (`cargo fmt --check` reports drift without changing files).
+The "Backend checks" workflow fails if the backend isn't `rustfmt`-clean, has clippy warnings, or has a failing test. Before pushing, run these in `backend/`:
+
+- `cargo fmt` (`cargo fmt --check` reports drift without changing files)
+- `cargo clippy --all-targets -- -D warnings`
+- `cargo test`
 
 ### Frontend (port 3000)
 
@@ -77,6 +81,15 @@ Run the frontend unit tests (Vitest, under `frontend/test/`) with `npm run test`
 - the `node:<major>-alpine` image tag in `docker-compose.dev.yml` (compose can't read `.nvmrc`)
 
 The minimum supported version is `engines.node` in `frontend/package.json`; if it changes, update the prerequisite above too.
+
+## Docker images
+
+"Publish Docker images" pushes `tnrd/playtogether-backend` and `tnrd/playtogether-frontend` (used by `docker-compose.yml`) with these tags:
+
+- `<short sha>` for every published run (pushes to `main`, `v*` tags, manual runs)
+- `<version>` and `<major>.<minor>` for `v*` tags
+- the optional extra tag given to a manual run
+- `latest` only for the commit that is the tip of `main` when its run publishes, so a slower run for an older commit never moves `latest` back. `v*` tag pushes don't move `latest`.
 
 ## How it works
 
