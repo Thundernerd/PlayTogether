@@ -26,8 +26,19 @@ pub enum AppError {
     SerdeJson(#[from] serde_json::Error),
     #[error("steam error: {0}")]
     Steam(String),
+    /// Steam answered HTTP 429: further requests are likely to fail too.
+    #[error("steam rate limited: {0}")]
+    SteamRateLimited(String),
     #[error("internal error: {0}")]
     Internal(String),
+}
+
+impl AppError {
+    /// Whether Steam rate limited the request, so asking again right away is
+    /// likely to fail too.
+    pub fn is_rate_limit(&self) -> bool {
+        matches!(self, AppError::SteamRateLimited(_))
+    }
 }
 
 impl IntoResponse for AppError {
@@ -38,7 +49,9 @@ impl IntoResponse for AppError {
             AppError::Forbidden => (StatusCode::FORBIDDEN, self.to_string()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
-            AppError::Steam(msg) => (StatusCode::BAD_GATEWAY, msg.clone()),
+            AppError::Steam(msg) | AppError::SteamRateLimited(msg) => {
+                (StatusCode::BAD_GATEWAY, msg.clone())
+            }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 

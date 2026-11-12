@@ -17,10 +17,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Installs the toolchain and components pinned in backend/rust-toolchain.toml.
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
 
       - name: Check formatting
         run: cargo fmt --check
