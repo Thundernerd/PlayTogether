@@ -6,6 +6,10 @@ describe('countStatus (nav badge and overview quick link)', () => {
     expect(countStatus({ loaded: false, loading: false, error: 'boom' })).toBe('failed')
   })
 
+  it('keeps the failed marker while a list that never loaded is retried', () => {
+    expect(countStatus({ loaded: false, loading: true, error: 'boom' })).toBe('failed')
+  })
+
   it('keeps the last count with a refresh-failed hint when a loaded list fails to refresh', () => {
     expect(countStatus({ loaded: true, loading: false, error: 'boom' })).toBe('stale')
   })

@@ -4,7 +4,7 @@ import type { SyncJobStatus } from '~/types/api'
 // show. 'failed' only covers a list that never loaded, and holds steady while a retry or
 // poll of it runs: a failed refresh of a loaded list keeps its status, and the page adds a
 // non-blocking "couldn't refresh" line (countStatus 'stale'). Likewise 'loading' only covers
-// a list's first load, so poll, vote and rate refreshes keep the current text (such as
+// a list's first load, so poll, vote, rate and selection refreshes keep the current text (such as
 // 'syncing' or 'empty') instead of swapping it for a spinner.
 export type ListStatus = 'items' | 'failed' | 'loading' | 'syncing' | 'empty' | 'not-synced'
 
@@ -36,10 +36,10 @@ export function listStatus(list: {
 
 // What a list's count (nav badge, overview quick link) shows, checked in this order.
 // 'failed' (a marker instead of a number) only covers a list that never loaded; once it has,
-// a failed refresh is 'stale': the last count plus a "couldn't refresh" hint. Both are checked
-// before 'loading' so they hold steady while a sync keeps polling a failing endpoint. 'loading'
-// (a spinner) only covers a list's first load, so poll, vote, rate and selection refreshes
-// keep the current count instead of flashing a spinner.
+// a failed refresh is 'stale': the last count plus a "couldn't refresh" hint. 'failed' is
+// checked before 'loading' so it holds steady while a sync keeps retrying a list that never
+// loaded. 'loading' (a spinner) only covers a list's first load, so poll, vote, rate and
+// selection refreshes keep the current count instead of flashing a spinner.
 export type CountStatus = 'failed' | 'stale' | 'loading' | 'count'
 
 export function countStatus(list: {
