@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
+use tokio::sync::watch;
+
 /// How long an app Steam failed for is not fetched again, so a Steam outage
 /// or rate limit is not met with a new pass of requests on every list load.
 /// It covers the background refresh of stale rows and the fetch of apps with
@@ -13,7 +15,8 @@ pub(super) const FAILED_FETCH_COOLDOWN: Duration = Duration::from_secs(15 * 60);
 /// process drains the queue. It also holds the cooldown for apps a fetch from
 /// Steam failed for, whether the background refresh or a list load's fetch
 /// of an app with no row: such an appid is not queued or fetched again until
-/// the cooldown has passed.
+/// the cooldown has passed. And it holds the apps with no row that list loads
+/// are fetching, so overlapping list loads fetch such an app once.
 pub struct GameRefreshQueue {
     inner: Mutex<QueueState>,
     /// The time the cooldown is measured with.
@@ -38,6 +41,9 @@ struct QueueState {
     /// When a fetch from Steam last failed for an appid still in its cooldown.
     failed_at: HashMap<u32, Instant>,
     worker_running: bool,
+    /// Appids with no row that a list load is fetching from Steam, each with
+    /// the channel that closes when that fetch ends.
+    fetching: HashMap<u32, watch::Receiver<()>>,
 }
 
 impl GameRefreshQueue {
@@ -89,6 +95,33 @@ impl GameRefreshQueue {
             .copied()
             .filter(|appid| !state.failed_at.contains_key(appid))
             .collect()
+    }
+
+    /// Claims the fetch of the `appids`, which have no row, for one list load.
+    /// The ones another list load is fetching already are not claimed again;
+    /// the claim holds a wait for each of their fetches instead.
+    pub fn claim_fetches(&self, appids: &[u32]) -> FetchClaim<'_> {
+        let (done, done_rx) = watch::channel(());
+        let mut state = self.state();
+        let mut owned = Vec::new();
+        let mut others = Vec::new();
+        for &appid in appids {
+            match state.fetching.get(&appid) {
+                Some(other) => others.push(other.clone()),
+                None => {
+                    state.fetching.insert(appid, done_rx.clone());
+                    owned.push(appid);
+                }
+            }
+        }
+        FetchClaim {
+            fetch: OwnedFetch {
+                queue: self,
+                appids: owned,
+                _done: done,
+            },
+            others,
+        }
     }
 
     /// Queues the `appids` that are not claimed already or in their cooldown.
@@ -176,6 +209,44 @@ impl Drop for RefreshWorker<'_> {
         }
         state.worker_running = false;
     }
+}
+
+/// What `GameRefreshQueue::claim_fetches` gave a list load: the fetches it
+/// owns and the other list loads' fetches it waits for.
+pub struct FetchClaim<'a> {
+    pub fetch: OwnedFetch<'a>,
+    pub others: Vec<watch::Receiver<()>>,
+}
+
+/// The appids one list load fetches from Steam. Dropping it, whether the
+/// fetch finished, failed or was cancelled, releases them and wakes the list
+/// loads waiting for them.
+pub struct OwnedFetch<'a> {
+    queue: &'a GameRefreshQueue,
+    appids: Vec<u32>,
+    /// Closes the waiters' channel when dropped.
+    _done: watch::Sender<()>,
+}
+
+impl OwnedFetch<'_> {
+    pub fn appids(&self) -> &[u32] {
+        &self.appids
+    }
+}
+
+impl Drop for OwnedFetch<'_> {
+    fn drop(&mut self) {
+        let mut state = self.queue.state();
+        for appid in &self.appids {
+            state.fetching.remove(appid);
+        }
+    }
+}
+
+/// Waits until the fetch behind `fetch` has ended, however it ended.
+pub async fn fetch_ended(mut fetch: watch::Receiver<()>) {
+    // Nothing is sent on the channel, so this returns once it closes.
+    let _ = fetch.changed().await;
 }
 
 #[cfg(test)]

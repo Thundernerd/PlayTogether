@@ -1,4 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
+use futures_util::future::join_all;
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
 use tracing::{info, warn};
@@ -11,6 +12,7 @@ use crate::steam::client::{
     derive_is_released, derive_is_released_from_app_details, store_item_has_details,
     AppDetailsData, SteamClient, StoreItem,
 };
+use crate::steam::game_refresh::{fetch_ended, FetchClaim, OwnedFetch};
 use crate::steam::media_urls::{
     collect_trailers, header_image_url, header_image_url_from_app_details,
     header_image_url_from_item, is_allowed_video_cdn_url, normalize_header_image_url,
@@ -279,11 +281,7 @@ impl GameCache {
             .copied()
             .filter(|id| !stored.contains(id))
             .collect();
-        let missing = state.game_refresh.not_cooling_down(&missing);
-        if !missing.is_empty() {
-            let failed = Self::fetch_missing(state, client, &missing, |_, _| async {}).await?;
-            state.game_refresh.record_failed(&failed);
-        }
+        Self::fetch_uncached(state, client, missing).await?;
 
         let due = Self::get_due_appids(state, appids).await?;
         let stale: Vec<u32> = appids
@@ -293,6 +291,50 @@ impl GameCache {
             .collect();
 
         Ok(state.game_refresh.enqueue(&stale))
+    }
+
+    /// Fetches the `appids`, which have no row, from Steam, except the ones in
+    /// their cooldown. An app another list load is fetching already is not
+    /// fetched again: this waits for that fetch instead, and fetches the app
+    /// itself only when that fetch was dropped before it stored the app or
+    /// started its cooldown.
+    async fn fetch_uncached(
+        state: &AppState,
+        client: &impl SteamStore,
+        mut missing: Vec<u32>,
+    ) -> AppResult<()> {
+        loop {
+            missing = state.game_refresh.not_cooling_down(&missing);
+            if missing.is_empty() {
+                return Ok(());
+            }
+            let FetchClaim { fetch, others } = state.game_refresh.claim_fetches(&missing);
+            if others.is_empty() {
+                return Self::fetch_owned(state, client, fetch).await;
+            }
+            let (own, _) = tokio::join!(
+                Self::fetch_owned(state, client, fetch),
+                join_all(others.into_iter().map(fetch_ended)),
+            );
+            own?;
+            let stored = Self::get_stored_appids(&state.db, &missing).await?;
+            missing.retain(|id| !stored.contains(id));
+        }
+    }
+
+    /// Fetches the apps `fetch` claimed, starts the cooldown for the ones
+    /// Steam failed for, then releases the claim.
+    async fn fetch_owned(
+        state: &AppState,
+        client: &impl SteamStore,
+        fetch: OwnedFetch<'_>,
+    ) -> AppResult<()> {
+        if !fetch.appids().is_empty() {
+            let failed =
+                Self::fetch_missing(state, client, fetch.appids(), |_, _| async {}).await?;
+            state.game_refresh.record_failed(&failed);
+        }
+        Ok(())
     }
 
     /// Fetches the `appids` that are due from Steam and caches them. Apps
@@ -787,7 +829,7 @@ mod tests {
     use crate::config::Config;
     use crate::jobs::registry::SyncJobRegistry;
     use crate::steam::game_refresh::{ManualClock, FAILED_FETCH_COOLDOWN};
-    use crate::steam::store::fake::FakeSteam;
+    use crate::steam::store::fake::{FakeSteam, SteamGate};
     use crate::steam::GameRefreshQueue;
 
     const PRICE_TTL_HOURS: i64 = 24;
@@ -1365,6 +1407,114 @@ mod tests {
 
         assert!(!starts_worker);
         assert_eq!(state.game_refresh.queued(), Vec::<u32>::new());
+    }
+
+    /// Lets `steam`'s held calls answer once the first call has reached it
+    /// and the other list loads have had time to reach it too.
+    async fn release_after_overlap(steam: &FakeSteam, gate: &SteamGate) {
+        reached(steam).await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        gate.release();
+    }
+
+    #[tokio::test]
+    async fn overlapping_list_loads_fetch_an_uncached_app_from_steam_once() {
+        let state = test_state(test_db().await);
+        let (steam, gate) = FakeSteam::new()
+            .with_store_item(UNCACHED, "Uncached")
+            .held();
+
+        let (first, second, ()) = tokio::join!(
+            GameCache::ensure_cached_from(&state, &steam, &[UNCACHED]),
+            GameCache::ensure_cached_from(&state, &steam, &[UNCACHED]),
+            release_after_overlap(&steam, &gate),
+        );
+
+        let _ = first.unwrap();
+        let _ = second.unwrap();
+        assert_eq!(steam.calls(), 1);
+        assert_eq!(
+            stored_name(&state.db, UNCACHED).await.as_deref(),
+            Some("Uncached")
+        );
+    }
+
+    #[tokio::test]
+    async fn overlapping_list_loads_ask_a_failing_steam_for_an_uncached_app_once() {
+        let state = test_state(test_db().await);
+        let (steam, gate) = FakeSteam::new().failing_every_call_for(UNCACHED).held();
+
+        let (first, second, ()) = tokio::join!(
+            GameCache::ensure_cached_from(&state, &steam, &[UNCACHED]),
+            GameCache::ensure_cached_from(&state, &steam, &[UNCACHED]),
+            release_after_overlap(&steam, &gate),
+        );
+
+        let _ = first.unwrap();
+        let _ = second.unwrap();
+        assert_eq!(steam.calls(), 1);
+        assert_eq!(stored_raw_json(&state.db, UNCACHED).await, None);
+    }
+
+    /// Waits until a call has reached `steam`.
+    async fn reached(steam: &FakeSteam) {
+        while steam.calls() == 0 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn a_dropped_list_load_does_not_leave_its_uncached_app_claimed() {
+        let state = test_state(test_db().await);
+        let (held, _gate) = FakeSteam::new()
+            .with_store_item(UNCACHED, "Uncached")
+            .held();
+        tokio::select! {
+            _ = GameCache::ensure_cached_from(&state, &held, &[UNCACHED]) => {
+                panic!("held Steam answered")
+            }
+            () = reached(&held) => {}
+        }
+
+        let answering = FakeSteam::new().with_store_item(UNCACHED, "Uncached");
+        let _ = GameCache::ensure_cached_from(&state, &answering, &[UNCACHED])
+            .await
+            .unwrap();
+
+        assert_eq!(answering.calls(), 1);
+        assert_eq!(
+            stored_name(&state.db, UNCACHED).await.as_deref(),
+            Some("Uncached")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_list_load_waiting_for_a_dropped_list_loads_fetch_fetches_the_app_itself() {
+        let state = test_state(test_db().await);
+        let (held, _gate) = FakeSteam::new()
+            .with_store_item(UNCACHED, "Uncached")
+            .held();
+        let mut first = Box::pin(GameCache::ensure_cached_from(&state, &held, &[UNCACHED]));
+        tokio::select! {
+            _ = &mut first => panic!("held Steam answered"),
+            () = reached(&held) => {}
+        }
+
+        let answering = FakeSteam::new().with_store_item(UNCACHED, "Uncached");
+        let (second, ()) = tokio::join!(
+            GameCache::ensure_cached_from(&state, &answering, &[UNCACHED]),
+            async move {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                drop(first);
+            },
+        );
+
+        let _ = second.unwrap();
+        assert_eq!(answering.calls(), 1);
+        assert_eq!(
+            stored_name(&state.db, UNCACHED).await.as_deref(),
+            Some("Uncached")
+        );
     }
 
     #[tokio::test]
