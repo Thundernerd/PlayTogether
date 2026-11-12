@@ -44,9 +44,13 @@ If you have an existing `playwishlist.db` from a previous install, rename it to 
 - `channel` in `backend/rust-toolchain.toml`
 - the `RUST_VERSION` build arg default in `backend/Dockerfile` (the Docker build fails if the two differ)
 
-Then run `cargo fmt` and `cargo clippy --all-targets` in `backend/` and fix anything the new version reports.
+Then run the checks below in `backend/` and fix anything the new version reports.
 
-CI fails if the backend isn't `rustfmt`-clean: run `cargo fmt` in `backend/` before pushing (`cargo fmt --check` reports drift without changing files).
+The "Backend checks" workflow fails if the backend isn't `rustfmt`-clean, has clippy warnings, or has a failing test. Before pushing, run these in `backend/`:
+
+- `cargo fmt` (`cargo fmt --check` reports drift without changing files)
+- `cargo clippy --all-targets -- -D warnings`
+- `cargo test`
 
 ### Frontend (port 3000)
 

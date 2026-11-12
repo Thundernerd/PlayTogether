@@ -26,5 +26,17 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
 
+      # Caches ~/.cargo and backend/target's dependency builds, keyed on the toolchain, Cargo.toml and Cargo.lock.
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
       - name: Check formatting
         run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test
