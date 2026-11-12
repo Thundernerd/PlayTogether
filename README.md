@@ -54,6 +54,14 @@ Type-check the frontend (including `.vue` files) with `npm run typecheck`; `npm 
 
 Run the frontend unit tests (Vitest, under `frontend/test/`) with `npm run test`.
 
+`frontend/.nvmrc` is the source of truth for the frontend's Node major. `nvm use` reads it, and so does the "Frontend checks" workflow. To change the major, edit:
+
+- `frontend/.nvmrc`
+- the `NODE_VERSION` build arg default in `frontend/Dockerfile`
+- the `node:<major>-alpine` image tag in `docker-compose.dev.yml` (compose can't read `.nvmrc`)
+
+The minimum supported version is `engines.node` in `frontend/package.json`; if it changes, update the prerequisite above too.
+
 ## How it works
 
 1. **Create or join a group** using an invite link (no accounts — a browser token identifies you).
