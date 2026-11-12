@@ -1,0 +1,7 @@
+# Pinned Rust toolchain for local builds, CI and the Docker image.
+# To bump: change `channel` here and the `RUST_VERSION` default in
+# backend/Dockerfile. CI installs whatever this file pins.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
