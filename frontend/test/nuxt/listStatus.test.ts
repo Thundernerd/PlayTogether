@@ -21,11 +21,27 @@ describe('countStatus (nav badge and overview quick link)', () => {
 })
 
 describe('listStatus (list page)', () => {
+  it('shows loading during the first load of an empty list', () => {
+    expect(listStatus({ itemCount: 0, loaded: false, loading: true, error: null })).toBe('loading')
+  })
+
+  it('keeps an already loaded empty list empty while it reloads', () => {
+    expect(listStatus({ itemCount: 0, loaded: true, loading: true, error: null })).toBe('empty')
+  })
+
   it('shows the blocking failed state when the list never loaded', () => {
     expect(listStatus({ itemCount: 0, loaded: false, loading: false, error: 'boom' })).toBe('failed')
   })
 
+  it('keeps the failed state while a list that never loaded is retried', () => {
+    expect(listStatus({ itemCount: 0, loaded: false, loading: true, error: 'boom' })).toBe('failed')
+  })
+
   it('keeps showing a loaded, empty list when a refresh of it fails', () => {
     expect(listStatus({ itemCount: 0, loaded: true, loading: false, error: 'boom' })).toBe('empty')
+  })
+
+  it('keeps showing a loaded, empty list while a failed refresh of it is retried', () => {
+    expect(listStatus({ itemCount: 0, loaded: true, loading: true, error: 'boom' })).toBe('empty')
   })
 })

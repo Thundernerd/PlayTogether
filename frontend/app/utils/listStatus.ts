@@ -1,11 +1,12 @@
 import type { SyncJobStatus } from '~/types/api'
 
 // What a list page shows, checked in this order. 'items' wins whenever there is something to
-// show. For a member's own list, 'loading' only covers the first load, so poll refreshes
-// during a sync keep the 'syncing' text instead of swapping it for a spinner. Likewise
-// 'failed' only covers a list that never loaded: a failed refresh of a loaded list keeps its
-// status, and the page adds a non-blocking "couldn't refresh" line (countStatus 'stale').
-export type ListStatus = 'items' | 'loading' | 'failed' | 'syncing' | 'empty' | 'not-synced'
+// show. 'failed' only covers a list that never loaded, and holds steady while a retry or
+// poll of it runs: a failed refresh of a loaded list keeps its status, and the page adds a
+// non-blocking "couldn't refresh" line (countStatus 'stale'). Likewise 'loading' only covers
+// a list's first load, so poll, vote and rate refreshes keep the current text (such as
+// 'syncing' or 'empty') instead of swapping it for a spinner.
+export type ListStatus = 'items' | 'failed' | 'loading' | 'syncing' | 'empty' | 'not-synced'
 
 export function listStatus(list: {
   itemCount: number
@@ -13,10 +14,9 @@ export function listStatus(list: {
    * Whether a load of the list has succeeded yet: the list-level flag, so the page agrees
    * with the nav and overview counts even when the member's own entry is missing. Once it
    * has, a reload keeps the current status instead of showing 'loading', and a failed reload
-   * keeps it instead of showing 'failed'. Left out, every load shows 'loading' and every
-   * error 'failed'.
+   * keeps it instead of showing 'failed'.
    */
-  loaded?: boolean
+  loaded: boolean
   loading: boolean
   error: string | null
   /** The member's Steam sync, for lists that come from it. Left out, no items is 'empty'. */
@@ -26,8 +26,8 @@ export function listStatus(list: {
   }
 }): ListStatus {
   if (list.itemCount > 0) return 'items'
-  if (list.loading && !list.loaded) return 'loading'
   if (list.error && !list.loaded) return 'failed'
+  if (list.loading && !list.loaded) return 'loading'
   if (!list.sync) return 'empty'
   if (list.sync.status === 'running') return 'syncing'
   if (list.sync.complete) return 'empty'

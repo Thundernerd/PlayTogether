@@ -13,7 +13,8 @@ const {
 } = useMemberList('shared')
 const { open: openGameDetail } = useGameDetail()
 
-// No sync behind this list, so no items once it has loaded is 'empty'.
+// No sync behind this list, so no items once it has loaded is 'empty'. Only the first load
+// shows 'loading', so poll, vote and rate refreshes keep the current text.
 const status = computed(() =>
   listStatus({
     itemCount: sharedGames.value.length,
