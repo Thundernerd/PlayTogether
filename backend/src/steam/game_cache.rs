@@ -1264,17 +1264,23 @@ mod tests {
         assert_eq!(steam.calls(), 2);
     }
 
+    const UNCACHED_A: u32 = 4001;
+    const UNCACHED_B: u32 = 4002;
+    const UNCACHED_C: u32 = 4003;
+    const UNCACHED_D: u32 = 4004;
+    const UNCACHED_E: u32 = 4005;
+
     #[tokio::test]
     async fn a_steam_outage_stops_retrying_a_failed_chunk_one_app_at_a_time() {
         let state = test_state(test_db().await);
         let steam = FakeSteam::new().failing_every_store_items_call();
-        let appids = [4001, 4002, 4003, 4004, 4005];
+        let appids = [UNCACHED_A, UNCACHED_B, UNCACHED_C, UNCACHED_D, UNCACHED_E];
 
         let failed = fetch_missing(&state, &steam, &appids).await.unwrap();
 
         assert_eq!(failed, appids.to_vec());
-        // The chunk request, then three single-app retries before giving up.
-        assert_eq!(steam.calls(), 1 + 3);
+        // The chunk request, then the single-app retries up to the limit.
+        assert_eq!(steam.calls(), 1 + MAX_CONSECUTIVE_SINGLE_APP_FAILURES);
     }
 
     #[tokio::test]
@@ -1284,19 +1290,25 @@ mod tests {
         let steam = FakeSteam::new()
             .with_store_item(LISTED, "Listed")
             .with_app_details(ONLY_IN_APP_DETAILS, "Details only")
-            .failing_every_call_for(4001)
-            .failing_every_call_for(4002)
-            .failing_every_call_for(4003);
+            .failing_every_call_for(UNCACHED_A)
+            .failing_every_call_for(UNCACHED_B)
+            .failing_every_call_for(UNCACHED_C);
 
         let failed = fetch_missing(
             &state,
             &steam,
-            &[4001, 4002, LISTED, 4003, ONLY_IN_APP_DETAILS],
+            &[
+                UNCACHED_A,
+                UNCACHED_B,
+                LISTED,
+                UNCACHED_C,
+                ONLY_IN_APP_DETAILS,
+            ],
         )
         .await
         .unwrap();
 
-        assert_eq!(failed, vec![4001, 4002, 4003]);
+        assert_eq!(failed, vec![UNCACHED_A, UNCACHED_B, UNCACHED_C]);
         assert_eq!(
             stored_name(&state.db, LISTED).await.as_deref(),
             Some("Listed")
