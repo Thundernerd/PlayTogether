@@ -70,7 +70,7 @@ pub mod fake {
         failing_every_call: HashSet<u32>,
         failing_app_details: HashSet<u32>,
         failing_when_alone: HashSet<u32>,
-        failing_store_items: bool,
+        fails_every_store_items_call: bool,
         rate_limited: bool,
         rate_limited_when_alone: bool,
         calls: AtomicUsize,
@@ -139,7 +139,7 @@ pub mod fake {
         /// Every `GetItems` call fails, as an HTTP 5xx or a lost connection
         /// would during a Steam outage.
         pub fn failing_every_store_items_call(mut self) -> Self {
-            self.failing_store_items = true;
+            self.fails_every_store_items_call = true;
             self
         }
 
@@ -196,7 +196,7 @@ pub mod fake {
                     "fake GetItems rate limit".into(),
                 ));
             }
-            if self.failing_store_items {
+            if self.fails_every_store_items_call {
                 return Err(AppError::Steam("fake GetItems outage".into()));
             }
             self.fail_if_any_failing(appids)?;
