@@ -325,18 +325,29 @@ impl GameCache {
         }
     }
 
-    /// Fetches the apps `fetch` claimed, starts the cooldown for the ones
-    /// Steam failed for, then releases the claim.
+    /// Fetches the apps `fetch` claimed and releases the claim on each one as
+    /// soon as it is settled, so a list load waiting for only some of them
+    /// does not wait for the rest. The cooldown for an app Steam failed for
+    /// starts before its claim is released.
     async fn fetch_owned(
         state: &AppState,
         client: &impl SteamStore,
-        fetch: OwnedFetch<'_>,
+        mut fetch: OwnedFetch<'_>,
     ) -> AppResult<()> {
-        if !fetch.appids().is_empty() {
-            let failed =
-                Self::fetch_missing(state, client, fetch.appids(), |_, _| async {}).await?;
-            state.fetch_cooldown.record_failed(&failed);
-        }
+        let appids = fetch.appids().to_vec();
+        Self::fetch_missing_settling(
+            state,
+            client,
+            &appids,
+            |_, _| async {},
+            |settled| {
+                if let Settled::Failed(failed) = settled {
+                    state.fetch_cooldown.record_failed(failed);
+                }
+                fetch.release(settled.appids());
+            },
+        )
+        .await?;
         Ok(())
     }
 
@@ -349,7 +360,23 @@ impl GameCache {
         state: &AppState,
         client: &impl SteamStore,
         appids: &[u32],
+        on_progress: F,
+    ) -> AppResult<Vec<u32>>
+    where
+        F: FnMut(i64, i64) -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
+        Self::fetch_missing_settling(state, client, appids, on_progress, |_| {}).await
+    }
+
+    /// `fetch_missing`, telling `on_settled` about each app as soon as the
+    /// walk is done with it, rather than once the whole walk has ended.
+    async fn fetch_missing_settling<F, Fut>(
+        state: &AppState,
+        client: &impl SteamStore,
+        appids: &[u32],
         mut on_progress: F,
+        mut on_settled: impl FnMut(Settled<'_>),
     ) -> AppResult<Vec<u32>>
     where
         F: FnMut(i64, i64) -> Fut,
@@ -366,6 +393,14 @@ impl GameCache {
             .copied()
             .filter(|id| due.contains(id))
             .collect();
+        let not_due: Vec<u32> = appids
+            .iter()
+            .copied()
+            .filter(|id| !due.contains(id))
+            .collect();
+        if !not_due.is_empty() {
+            on_settled(Settled::Cached(&not_due));
+        }
 
         let total = needs_fetch.len() as i64;
         on_progress(0, total).await;
@@ -376,7 +411,7 @@ impl GameCache {
 
         let chunk_size = state.config.steam_chunk_size;
         let delay = tokio::time::Duration::from_millis(state.config.steam_chunk_delay_ms);
-        let mut progress = WalkProgress::new(total, on_progress);
+        let mut progress = WalkProgress::new(total, on_progress, on_settled);
         let mut still_missing = Vec::new();
 
         for chunk in needs_fetch.chunks(chunk_size) {
@@ -388,7 +423,7 @@ impl GameCache {
 
                     for appid in chunk {
                         if returned.contains(appid) {
-                            progress.record_fetched(1).await;
+                            progress.record_fetched(&[*appid]).await;
                         } else {
                             still_missing.push(*appid);
                         }
@@ -418,7 +453,7 @@ impl GameCache {
                         after_individual.push(appid);
                     } else {
                         Self::upsert_items(state, &items).await?;
-                        progress.record_fetched(1).await;
+                        progress.record_fetched(&[appid]).await;
                     }
                 }
                 Err(error) if error.is_rate_limit() => {
@@ -440,7 +475,7 @@ impl GameCache {
             match client.fetch_app_details(appid).await {
                 Ok(Some(detail)) => {
                     Self::upsert_from_app_details(state, appid, &detail).await?;
-                    progress.record_fetched(1).await;
+                    progress.record_fetched(&[appid]).await;
                 }
                 Ok(None) => after_details.push(appid),
                 Err(error) => {
@@ -453,7 +488,7 @@ impl GameCache {
 
         for appid in after_details {
             Self::upsert_unavailable(state, appid).await?;
-            progress.record_fetched(1).await;
+            progress.record_fetched(&[appid]).await;
         }
 
         info!(
@@ -785,25 +820,45 @@ pub async fn load_games_map(db: &SqlitePool, appids: &[u32]) -> AppResult<HashMa
 /// Progress through `GameCache::fetch_missing`'s walk, reported to its
 /// `on_progress` callback. Apps Steam failed for count as done: they keep the
 /// row they have (or stay uncached), and the next fetch tries them again.
-struct WalkProgress<F> {
+struct WalkProgress<F, S> {
     total: i64,
     fetched: i64,
     /// The appids Steam failed for.
     failed: Vec<u32>,
     on_progress: F,
+    on_settled: S,
 }
 
-impl<F, Fut> WalkProgress<F>
+/// Apps `GameCache::fetch_missing`'s walk is done with.
+enum Settled<'a> {
+    /// They have a fresh row: stored by the walk (as unavailable, too) or
+    /// refreshed by someone else before it asked Steam.
+    Cached(&'a [u32]),
+    /// Steam failed for them; they keep the row they had, or stay uncached.
+    Failed(&'a [u32]),
+}
+
+impl Settled<'_> {
+    fn appids(&self) -> &[u32] {
+        match self {
+            Settled::Cached(appids) | Settled::Failed(appids) => appids,
+        }
+    }
+}
+
+impl<F, Fut, S> WalkProgress<F, S>
 where
     F: FnMut(i64, i64) -> Fut,
     Fut: std::future::Future<Output = ()>,
+    S: FnMut(Settled<'_>),
 {
-    fn new(total: i64, on_progress: F) -> Self {
+    fn new(total: i64, on_progress: F, on_settled: S) -> Self {
         Self {
             total,
             fetched: 0,
             failed: Vec::new(),
             on_progress,
+            on_settled,
         }
     }
 
@@ -815,13 +870,16 @@ where
         self.done() >= self.total
     }
 
-    async fn record_fetched(&mut self, apps: usize) {
-        self.fetched += apps as i64;
+    /// Records `appids` as stored, once their rows are written.
+    async fn record_fetched(&mut self, appids: &[u32]) {
+        self.fetched += appids.len() as i64;
+        (self.on_settled)(Settled::Cached(appids));
         self.report().await;
     }
 
     async fn record_failed(&mut self, appids: &[u32]) {
         self.failed.extend_from_slice(appids);
+        (self.on_settled)(Settled::Failed(appids));
         self.report().await;
     }
 
@@ -1645,6 +1703,96 @@ mod tests {
             stored_name(&state.db, UNCACHED).await.as_deref(),
             Some("Uncached")
         );
+    }
+
+    const IN_FIRST_CHUNK: u32 = 3004;
+    const IN_SECOND_CHUNK: u32 = 3005;
+
+    /// Waits until a list load waits for another list load's fetch of `appid`.
+    async fn waiting_for(state: &AppState, appid: u32) {
+        while state.game_refresh.waiting_for(appid) == 0 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn a_list_load_waiting_for_another_loads_fetch_returns_once_its_app_is_stored() {
+        let mut state = test_state(test_db().await);
+        state.config.steam_chunk_size = 1;
+        let (steam, gate) = FakeSteam::new()
+            .with_store_item(IN_FIRST_CHUNK, "First")
+            .with_store_item(IN_SECOND_CHUNK, "Second")
+            .held();
+
+        let (first, second) = finishes(async {
+            tokio::join!(
+                GameCache::ensure_cached_from(&state, &steam, &[IN_FIRST_CHUNK, IN_SECOND_CHUNK]),
+                async {
+                    reached(&steam).await;
+                    let (second, ()) = tokio::join!(
+                        GameCache::ensure_cached_from(&state, &steam, &[IN_FIRST_CHUNK]),
+                        async {
+                            waiting_for(&state, IN_FIRST_CHUNK).await;
+                            gate.answer_one();
+                        },
+                    );
+                    // The first load's second chunk is still held.
+                    let stored = stored_name(&state.db, IN_FIRST_CHUNK).await;
+                    let second_chunk = stored_name(&state.db, IN_SECOND_CHUNK).await;
+                    gate.release();
+                    (second, stored, second_chunk)
+                },
+            )
+        })
+        .await;
+
+        let _ = first.unwrap();
+        let (second, stored, second_chunk) = second;
+        let _ = second.unwrap();
+        assert_eq!(stored.as_deref(), Some("First"));
+        assert_eq!(second_chunk, None);
+        // One call per chunk: the waiting load did not fetch the app again.
+        assert_eq!(steam.calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_list_load_waiting_for_another_loads_fetch_of_an_app_steam_fails_for_does_not_fetch_it_again(
+    ) {
+        let mut state = test_state(test_db().await);
+        state.config.steam_chunk_size = 1;
+        let (steam, gate) = FakeSteam::new()
+            .failing_every_call_for(IN_FIRST_CHUNK)
+            .with_store_item(IN_SECOND_CHUNK, "Second")
+            .held();
+
+        let (first, second) = finishes(async {
+            tokio::join!(
+                GameCache::ensure_cached_from(&state, &steam, &[IN_FIRST_CHUNK, IN_SECOND_CHUNK]),
+                async {
+                    reached(&steam).await;
+                    let (second, ()) = tokio::join!(
+                        GameCache::ensure_cached_from(&state, &steam, &[IN_FIRST_CHUNK]),
+                        async {
+                            waiting_for(&state, IN_FIRST_CHUNK).await;
+                            gate.answer_one();
+                        },
+                    );
+                    // The first load's second chunk is still held.
+                    let second_chunk = stored_name(&state.db, IN_SECOND_CHUNK).await;
+                    gate.release();
+                    (second, second_chunk)
+                },
+            )
+        })
+        .await;
+
+        let _ = first.unwrap();
+        let (second, second_chunk) = second;
+        let _ = second.unwrap();
+        assert_eq!(second_chunk, None);
+        // One call per chunk: the waiting load did not ask for the app again.
+        assert_eq!(steam.calls(), 2);
+        assert_eq!(stored_raw_json(&state.db, IN_FIRST_CHUNK).await, None);
     }
 
     #[tokio::test]

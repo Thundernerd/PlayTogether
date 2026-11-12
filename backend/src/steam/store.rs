@@ -84,6 +84,11 @@ pub mod fake {
         pub fn release(&self) {
             self.0.close();
         }
+
+        /// Lets one held call, or the next call, answer; the others stay held.
+        pub fn answer_one(&self) {
+            self.0.add_permits(1);
+        }
     }
 
     impl FakeSteam {
@@ -166,7 +171,10 @@ pub mod fake {
             self.calls.fetch_add(1, Ordering::SeqCst);
             if let Some(gate) = &self.gate {
                 // The gate is released by closing it, so acquiring fails then.
-                let _ = gate.acquire().await;
+                // A permit lets one call answer, so it is used up.
+                if let Ok(permit) = gate.acquire().await {
+                    permit.forget();
+                }
             }
         }
 
