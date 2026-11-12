@@ -5,14 +5,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 
-const WISHLIST_URL: &str =
-    "https://api.steampowered.com/IWishlistService/GetWishlist/v1/";
-const GET_ITEMS_URL: &str =
-    "https://api.steampowered.com/IStoreBrowseService/GetItems/v1";
+const WISHLIST_URL: &str = "https://api.steampowered.com/IWishlistService/GetWishlist/v1/";
+const GET_ITEMS_URL: &str = "https://api.steampowered.com/IStoreBrowseService/GetItems/v1";
 const TAG_LIST_URL: &str = "https://api.steampowered.com/IStoreService/GetTagList/v1";
 const APP_DETAILS_URL: &str = "https://store.steampowered.com/api/appdetails";
-const OWNED_GAMES_URL: &str =
-    "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/";
+const OWNED_GAMES_URL: &str = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/";
 
 #[derive(Clone)]
 pub struct SteamClient {
@@ -65,7 +62,8 @@ impl SteamClient {
     }
 
     pub async fn fetch_store_items(&self, appids: &[u32]) -> AppResult<Vec<StoreItem>> {
-        self.fetch_store_items_with_request(appids, store_list_data_request()).await
+        self.fetch_store_items_with_request(appids, store_list_data_request())
+            .await
     }
 
     pub async fn fetch_store_item_details(&self, appid: u32) -> AppResult<Vec<StoreItem>> {
@@ -129,7 +127,10 @@ impl SteamClient {
         let response = self
             .http
             .get(APP_DETAILS_URL)
-            .query(&[("appids", appid.to_string()), ("filters", String::from("basic,release_date"))])
+            .query(&[
+                ("appids", appid.to_string()),
+                ("filters", String::from("basic,release_date")),
+            ])
             .send()
             .await?
             .error_for_status()

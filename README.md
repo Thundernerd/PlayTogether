@@ -38,6 +38,8 @@ Environment variables (optional):
 
 If you have an existing `playwishlist.db` from a previous install, rename it to `playtogether.db` or set `DATABASE_URL=sqlite:playwishlist.db?mode=rwc`.
 
+CI fails if the backend isn't `rustfmt`-clean: run `cargo fmt` in `backend/` before pushing (`cargo fmt --check` reports drift without changing files).
+
 ### Frontend (port 3000)
 
 ```bash

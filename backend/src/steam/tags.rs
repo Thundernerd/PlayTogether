@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use chrono::Utc;
+use std::collections::HashMap;
 use tracing::info;
 
 use crate::error::AppResult;
@@ -64,10 +64,7 @@ impl TagCache {
 
     fn parse_tags_json(json: &str) -> AppResult<HashMap<u32, String>> {
         let entries: Vec<TagEntryJson> = serde_json::from_str(json)?;
-        Ok(entries
-            .into_iter()
-            .map(|t| (t.tagid, t.name))
-            .collect())
+        Ok(entries.into_iter().map(|t| (t.tagid, t.name)).collect())
     }
 }
 
