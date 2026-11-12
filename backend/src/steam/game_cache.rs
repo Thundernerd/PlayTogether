@@ -298,7 +298,8 @@ impl GameCache {
     /// Fetches the `appids` that are due from Steam and caches them. Apps
     /// Steam fails for keep the row they had; returns their appids. When a
     /// chunk request fails, its apps are asked for one at a time, unless Steam
-    /// rate limited it: then every app in the chunk counts as failed.
+    /// rate limited it: then every app in the chunk counts as failed. A rate
+    /// limit while asking one at a time fails the apps not asked for yet.
     pub async fn fetch_missing<F, Fut>(
         state: &AppState,
         client: &impl SteamStore,
@@ -348,9 +349,7 @@ impl GameCache {
                         }
                     }
                 }
-                Err(error)
-                    if chunk.len() > 1 && !matches!(error, AppError::SteamRateLimited(_)) =>
-                {
+                Err(error) if chunk.len() > 1 && !error.is_rate_limit() => {
                     warn!(?chunk, %error, "Steam GetItems failed for chunk; retrying its apps one at a time");
                     still_missing.extend_from_slice(chunk);
                 }
@@ -366,7 +365,7 @@ impl GameCache {
         }
 
         let mut after_individual = Vec::new();
-        for appid in still_missing {
+        for (index, &appid) in still_missing.iter().enumerate() {
             match client.fetch_store_items(&[appid]).await {
                 Ok(items) => {
                     let items = Self::requested_items(&[appid], items);
@@ -376,6 +375,12 @@ impl GameCache {
                         Self::upsert_items(state, &items).await?;
                         progress.record_fetched(1).await;
                     }
+                }
+                Err(error) if error.is_rate_limit() => {
+                    let not_asked = &still_missing[index..];
+                    warn!(?not_asked, %error, "Steam GetItems rate limited; leaving the remaining apps for the next fetch");
+                    progress.record_failed(not_asked).await;
+                    break;
                 }
                 Err(error) => {
                     warn!(appid, %error, "Steam GetItems failed for app; leaving it for the next fetch");
@@ -1176,6 +1181,23 @@ mod tests {
         assert_eq!(failed, vec![LISTED, ONLY_IN_APP_DETAILS]);
         assert_eq!(steam.store_item_calls(), 1);
         assert_eq!(stored_raw_json(&state.db, LISTED).await, None);
+    }
+
+    #[tokio::test]
+    async fn a_rate_limit_while_retrying_a_failed_chunk_fails_the_apps_not_asked_for_yet() {
+        let state = test_state(test_db().await);
+        let steam = FakeSteam::new()
+            .with_store_item(LISTED, "Listed")
+            .with_app_details(ONLY_IN_APP_DETAILS, "Details only")
+            .failing_every_call_for(FAILING)
+            .rate_limiting_store_items_calls_for_one_app();
+
+        let failed = fetch_missing(&state, &steam, &[LISTED, FAILING, ONLY_IN_APP_DETAILS])
+            .await
+            .unwrap();
+
+        assert_eq!(failed, vec![LISTED, FAILING, ONLY_IN_APP_DETAILS]);
+        assert_eq!(steam.store_item_calls(), 2);
     }
 
     const STALE: u32 = 3001;

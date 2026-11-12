@@ -68,6 +68,7 @@ pub mod fake {
         failing_app_details: HashSet<u32>,
         failing_when_alone: HashSet<u32>,
         rate_limited: bool,
+        rate_limited_when_alone: bool,
         store_item_calls: AtomicUsize,
     }
 
@@ -126,6 +127,13 @@ pub mod fake {
             self
         }
 
+        /// `GetItems` fails the way Steam answers with HTTP 429 when asked for
+        /// one app on its own.
+        pub fn rate_limiting_store_items_calls_for_one_app(mut self) -> Self {
+            self.rate_limited_when_alone = true;
+            self
+        }
+
         /// How many `GetItems` calls were made.
         pub fn store_item_calls(&self) -> usize {
             self.store_item_calls.load(Ordering::SeqCst)
@@ -145,7 +153,7 @@ pub mod fake {
 
         fn store_items_for(&self, appids: &[u32]) -> AppResult<Vec<StoreItem>> {
             self.store_item_calls.fetch_add(1, Ordering::SeqCst);
-            if self.rate_limited {
+            if self.rate_limited || (self.rate_limited_when_alone && appids.len() == 1) {
                 return Err(AppError::SteamRateLimited(
                     "fake GetItems rate limit".into(),
                 ));

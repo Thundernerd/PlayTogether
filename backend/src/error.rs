@@ -33,6 +33,14 @@ pub enum AppError {
     Internal(String),
 }
 
+impl AppError {
+    /// Whether Steam rate limited the request, so asking again right away is
+    /// likely to fail too.
+    pub fn is_rate_limit(&self) -> bool {
+        matches!(self, AppError::SteamRateLimited(_))
+    }
+}
+
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
