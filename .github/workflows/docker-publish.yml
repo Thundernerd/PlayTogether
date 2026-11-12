@@ -28,7 +28,7 @@ env:
   # docker/metadata-action tag rules, shared by both jobs so the per-platform
   # image labels (e.g. org.opencontainers.image.version) match the published tags.
   # `latest` is not in here: only the merge job adds it, and only when the run's
-  # commit is still the tip of main (see "Check for tip of main").
+  # commit is still the tip of main (see the tip job).
   IMAGE_TAGS: |
     type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' }}
     type=semver,pattern={{version}}
@@ -183,6 +183,28 @@ jobs:
           sources=()
           for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
           docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
+
+      # The tip job and the push above are seconds apart, but a newer commit's
+      # whole run could still finish in between, and this push would then move
+      # `latest` back to an older commit. Re-check, and if main moved on, put
+      # `latest` back on the tip's sha tag (type=sha is the 7-character short sha).
+      # If the tip has no sha tag yet, its own run hasn't pushed and will move
+      # `latest` itself.
+      - name: Hand latest to a newer tip of main
+        if: needs.tip.outputs.is-tip == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha); then
+            echo "::warning::Could not re-check the tip of main: leaving latest on $GITHUB_SHA."
+          elif [[ "$tip" == "$GITHUB_SHA" ]]; then
+            echo "$GITHUB_SHA is still the tip of main."
+          elif docker buildx imagetools inspect "$IMAGE:${tip:0:7}" > /dev/null 2>&1; then
+            echo "main moved to $tip while pushing: pointing latest at it."
+            docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:${tip:0:7}"
+          else
+            echo "main moved to $tip, which has no image yet: its own run will move latest."
+          fi
 
       - name: Inspect image
         env:
