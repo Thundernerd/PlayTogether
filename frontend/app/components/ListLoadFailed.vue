@@ -1,7 +1,6 @@
 <script setup lang="ts">
 // A list that never loaded: stands in for its items. Try again stays enabled while a request is
-// in flight: a sync polls every 2s, so tying it to the loading flag would flicker it, and a
-// click mid-request just joins that request.
+// in flight, for the reason given in ListRefreshFailed.
 defineEmits<{
   retry: []
 }>()
