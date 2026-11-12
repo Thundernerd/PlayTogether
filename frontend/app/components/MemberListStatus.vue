@@ -6,8 +6,6 @@ import type { ListStatus } from '~/utils/listStatus'
 // optional; the empty text can be replaced with the `empty` slot when it needs markup.
 defineProps<{
   status: ListStatus
-  /** A load is running, so the failed state's retry button is disabled. */
-  retrying?: boolean
   loadingText: string
   failedText: string
   syncingText?: string
@@ -22,7 +20,7 @@ defineEmits<{
 
 <template>
   <LoadingMessage v-if="status === 'loading'">{{ loadingText }}</LoadingMessage>
-  <ListLoadFailed v-else-if="status === 'failed'" :retrying="retrying" @retry="$emit('retry')">
+  <ListLoadFailed v-else-if="status === 'failed'" @retry="$emit('retry')">
     {{ failedText }}
   </ListLoadFailed>
   <p v-else-if="status === 'syncing'" class="muted">{{ syncingText }}</p>

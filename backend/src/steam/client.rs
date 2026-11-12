@@ -99,7 +99,13 @@ impl SteamClient {
             .get(GET_ITEMS_URL)
             .query(&[("input_json", input_json.to_string())])
             .send()
-            .await?
+            .await?;
+        if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(AppError::SteamRateLimited(
+                "GetItems request was rate limited (HTTP 429)".into(),
+            ));
+        }
+        let response = response
             .error_for_status()
             .map_err(|e| AppError::Steam(format!("GetItems request failed: {e}")))?;
 

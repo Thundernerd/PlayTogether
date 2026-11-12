@@ -1,32 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant};
 
-/// How long an app Steam failed for is not fetched again, so a Steam outage
-/// or rate limit is not met with a new pass of requests on every list load.
-/// It covers the background refresh of stale rows and the fetch of apps with
-/// no row that list loads wait for.
-pub(super) const FAILED_FETCH_COOLDOWN: Duration = Duration::from_secs(15 * 60);
+use tokio::sync::watch;
+
+use crate::steam::fetch_cooldown::FetchCooldown;
 
 /// Appids whose cached rows are stale and wait for the background refresh.
 /// An appid is queued once until its refresh finishes, and one worker per
-/// process drains the queue. It also holds the cooldown for apps a fetch from
-/// Steam failed for, whether the background refresh or a list load's fetch
-/// of an app with no row: such an appid is not queued or fetched again until
-/// the cooldown has passed.
+/// process drains the queue. It also holds the apps with no row that list
+/// loads are fetching, so overlapping list loads fetch such an app once.
+#[derive(Default)]
 pub struct GameRefreshQueue {
     inner: Mutex<QueueState>,
-    /// The time the cooldown is measured with.
-    now: Box<dyn Fn() -> Instant + Send + Sync>,
-}
-
-impl Default for GameRefreshQueue {
-    fn default() -> Self {
-        Self {
-            inner: Mutex::default(),
-            now: Box::new(Instant::now),
-        }
-    }
 }
 
 #[derive(Default)]
@@ -35,24 +20,15 @@ struct QueueState {
     pending: Vec<u32>,
     /// Pending or being refreshed; an appid here is not queued again.
     claimed: HashSet<u32>,
-    /// When a fetch from Steam last failed for an appid still in its cooldown.
-    failed_at: HashMap<u32, Instant>,
     worker_running: bool,
+    /// Appids with no row that a list load is fetching from Steam. Removing
+    /// an appid closes its channel, which wakes the list loads waiting for it.
+    fetching: HashMap<u32, watch::Sender<()>>,
 }
 
 impl GameRefreshQueue {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// A queue whose cooldown is measured with `clock` instead of the system
-    /// clock.
-    #[cfg(test)]
-    pub fn with_clock(clock: ManualClock) -> Self {
-        Self {
-            inner: Mutex::default(),
-            now: Box::new(move || clock.now()),
-        }
     }
 
     /// The queue state. Every update leaves it consistent, so a lock poisoned
@@ -61,45 +37,48 @@ impl GameRefreshQueue {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// The queue state, with the cooldowns that have passed cleared.
-    fn state_after_cooldowns(&self) -> MutexGuard<'_, QueueState> {
-        let now = (self.now)();
+    /// Claims the fetch of the `appids`, which have no row, for one list load.
+    /// The ones another list load is fetching already are not claimed again;
+    /// the claim holds a wait for each of their fetches instead.
+    pub fn claim_fetches(&self, appids: &[u32]) -> FetchClaim<'_> {
         let mut state = self.state();
-        state
-            .failed_at
-            .retain(|_, failed_at| now.duration_since(*failed_at) < FAILED_FETCH_COOLDOWN);
-        state
-    }
-
-    /// Starts the cooldown for `appids`, which a fetch from Steam failed for.
-    /// They are not queued or fetched again until it has passed.
-    pub fn record_failed(&self, appids: &[u32]) {
-        let now = (self.now)();
-        let mut state = self.state();
+        let mut owned = Vec::new();
+        let mut in_flight_elsewhere = Vec::new();
         for &appid in appids {
-            state.failed_at.insert(appid, now);
+            match state.fetching.get(&appid) {
+                Some(fetch) => in_flight_elsewhere.push(InFlightFetch(fetch.subscribe())),
+                None => {
+                    state.fetching.insert(appid, watch::channel(()).0);
+                    owned.push(appid);
+                }
+            }
+        }
+        FetchClaim {
+            fetch: OwnedFetch {
+                queue: self,
+                appids: owned,
+            },
+            in_flight_elsewhere,
         }
     }
 
-    /// The `appids` not in their cooldown, in the order given.
-    pub fn not_cooling_down(&self, appids: &[u32]) -> Vec<u32> {
-        let state = self.state_after_cooldowns();
-        appids
-            .iter()
-            .copied()
-            .filter(|appid| !state.failed_at.contains_key(appid))
-            .collect()
+    /// How many list loads wait for another list load's fetch of `appid`.
+    #[cfg(test)]
+    pub fn waiting_for(&self, appid: u32) -> usize {
+        self.state()
+            .fetching
+            .get(&appid)
+            .map_or(0, watch::Sender::receiver_count)
     }
 
-    /// Queues the `appids` that are not claimed already or in their cooldown.
-    /// Returns true when the caller must start the worker with `start_worker`.
+    /// Queues the `appids` that are not claimed already or in their
+    /// `cooldown`. Returns true when the caller must start the worker with
+    /// `start_worker`.
     #[must_use = "when true, the caller must start the refresh worker"]
-    pub fn enqueue(&self, appids: &[u32]) -> bool {
-        let mut state = self.state_after_cooldowns();
-        for &appid in appids {
-            if state.failed_at.contains_key(&appid) {
-                continue;
-            }
+    pub fn enqueue(&self, appids: &[u32], cooldown: &FetchCooldown) -> bool {
+        let appids = cooldown.not_cooling_down(appids);
+        let mut state = self.state();
+        for appid in appids {
             if state.claimed.insert(appid) {
                 state.pending.push(appid);
             }
@@ -178,35 +157,45 @@ impl Drop for RefreshWorker<'_> {
     }
 }
 
-#[cfg(test)]
-pub use manual_clock::ManualClock;
+/// What `GameRefreshQueue::claim_fetches` gave a list load: the fetches it
+/// owns and the other list loads' fetches it waits for.
+pub struct FetchClaim<'a> {
+    pub fetch: OwnedFetch<'a>,
+    pub in_flight_elsewhere: Vec<InFlightFetch>,
+}
 
-#[cfg(test)]
-mod manual_clock {
-    use std::sync::{Arc, Mutex};
-    use std::time::{Duration, Instant};
+/// The appids one list load fetches from Steam. Dropping it, whether the
+/// fetch finished, failed or was cancelled, releases them and wakes the list
+/// loads waiting for them.
+pub struct OwnedFetch<'a> {
+    queue: &'a GameRefreshQueue,
+    appids: Vec<u32>,
+}
 
-    /// A clock that only moves when a test advances it.
-    #[derive(Clone)]
-    pub struct ManualClock(Arc<Mutex<Instant>>);
+impl OwnedFetch<'_> {
+    /// The appids this list load fetches; empty when other list loads are
+    /// fetching all of the ones it asked for.
+    pub fn appids(&self) -> &[u32] {
+        &self.appids
+    }
+}
 
-    impl Default for ManualClock {
-        fn default() -> Self {
-            Self(Arc::new(Mutex::new(Instant::now())))
+impl Drop for OwnedFetch<'_> {
+    fn drop(&mut self) {
+        let mut state = self.queue.state();
+        for appid in &self.appids {
+            state.fetching.remove(appid);
         }
     }
+}
 
-    impl ManualClock {
-        pub fn new() -> Self {
-            Self::default()
-        }
+/// Another list load's fetch of an app with no row.
+pub struct InFlightFetch(watch::Receiver<()>);
 
-        pub fn now(&self) -> Instant {
-            *self.0.lock().unwrap()
-        }
-
-        pub fn advance(&self, by: Duration) {
-            *self.0.lock().unwrap() += by;
-        }
+impl InFlightFetch {
+    /// Waits until the fetch has ended, however it ended.
+    pub async fn ended(mut self) {
+        // Nothing is sent on the channel, so this returns once it closes.
+        let _ = self.0.changed().await;
     }
 }

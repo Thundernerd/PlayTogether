@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 use crate::config::Config;
 use crate::jobs::registry::SyncJobRegistry;
-use crate::steam::GameRefreshQueue;
+use crate::steam::{FetchCooldown, GameRefreshQueue};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -15,5 +15,6 @@ pub struct AppState {
     pub tags: Arc<RwLock<HashMap<u32, String>>>,
     pub sync_jobs: Arc<SyncJobRegistry>,
     pub game_refresh: Arc<GameRefreshQueue>,
+    pub fetch_cooldown: Arc<FetchCooldown>,
     pub config: Config,
 }
