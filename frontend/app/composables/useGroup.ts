@@ -181,7 +181,7 @@ export function useGroup() {
           : api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`),
         token.value && !me.value ? fetchMe() : undefined,
       ])
-      // The member left while these were in flight: don't write the left group back.
+      // The member left while these were in flight: don't write the left group or member back.
       if (resets !== resetsAtStart) return
       // Assign and start the list loads in one synchronous step: otherwise Vue renders the
       // member's page before the loading flags are set, flashing its empty / not-synced text.
