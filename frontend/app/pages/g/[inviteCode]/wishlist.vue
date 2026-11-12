@@ -174,7 +174,6 @@ onUnmounted(stopPolling)
       <MemberListStatus
         v-else
         :status="status"
-        :retrying="wishlistsLoading"
         loading-text="Loading your wishlist…"
         failed-text="Couldn't load your wishlist."
         syncing-text="Syncing your wishlist from Steam…"
