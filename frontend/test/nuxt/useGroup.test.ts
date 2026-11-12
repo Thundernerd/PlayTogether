@@ -53,6 +53,26 @@ describe('useGroup retryListLoads (Try again)', () => {
     expect(libraries.error).toBeNull()
   })
 
+  it('waits for a joined list request even when the group reload fails first', async () => {
+    const doomed = deferred<never>()
+    let librariesRequests = 0
+    api.mockImplementation((url: string) => {
+      if (url.includes('/api/groups/by-invite/')) return Promise.reject(new Error('backend down'))
+      if (isLibraries(url)) return ++librariesRequests === 1 ? doomed.promise : Promise.resolve([])
+      return Promise.resolve([])
+    })
+    const group = useGroup()
+
+    const poll = group.refreshMemberData().catch(() => {})
+    const retry = group.retryListLoads()
+    await poll
+    doomed.reject(new Error('backend down'))
+    await retry
+
+    expect(librariesRequests).toBe(2)
+    expect(useMemberLists().value.libraries.error).toBeNull()
+  })
+
   it('does not send a second request when the in-flight request it joined succeeds', async () => {
     const pending = deferred<[]>()
     api.mockImplementation((url: string) =>
@@ -80,4 +100,5 @@ describe('useGroup retryListLoads (Try again)', () => {
     expect(librariesCalls()).toBe(1)
     expect(useMemberLists().value.libraries.error).toBe('backend down')
   })
+
 })
