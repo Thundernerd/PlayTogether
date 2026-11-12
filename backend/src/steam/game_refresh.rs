@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use super::fetch_cooldown::FetchCooldown;
+use crate::steam::fetch_cooldown::FetchCooldown;
 
 /// Appids whose cached rows are stale and wait for the background refresh.
 /// An appid is queued once until its refresh finishes, and one worker per
