@@ -52,6 +52,7 @@ impl SteamStore for SteamClient {
 #[cfg(test)]
 pub mod fake {
     use std::collections::{HashMap, HashSet};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
     use crate::error::AppError;
@@ -66,6 +67,8 @@ pub mod fake {
         failing_every_call: HashSet<u32>,
         failing_app_details: HashSet<u32>,
         failing_when_alone: HashSet<u32>,
+        rate_limited: bool,
+        store_item_calls: AtomicUsize,
     }
 
     impl FakeSteam {
@@ -117,6 +120,17 @@ pub mod fake {
             self
         }
 
+        /// Every `GetItems` call fails the way Steam answers with HTTP 429.
+        pub fn rate_limited(mut self) -> Self {
+            self.rate_limited = true;
+            self
+        }
+
+        /// How many `GetItems` calls were made.
+        pub fn store_item_calls(&self) -> usize {
+            self.store_item_calls.load(Ordering::SeqCst)
+        }
+
         fn fail_if_any_failing(&self, appids: &[u32]) -> AppResult<()> {
             match appids
                 .iter()
@@ -130,6 +144,12 @@ pub mod fake {
         }
 
         fn store_items_for(&self, appids: &[u32]) -> AppResult<Vec<StoreItem>> {
+            self.store_item_calls.fetch_add(1, Ordering::SeqCst);
+            if self.rate_limited {
+                return Err(AppError::SteamRateLimited(
+                    "fake GetItems rate limit".into(),
+                ));
+            }
             self.fail_if_any_failing(appids)?;
             if let [appid] = appids {
                 if self.failing_when_alone.contains(appid) {
