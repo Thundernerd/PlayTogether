@@ -388,16 +388,8 @@ impl GameCache {
         }
 
         let due = Self::get_due_appids(state, appids).await?;
-        let needs_fetch: Vec<u32> = appids
-            .iter()
-            .copied()
-            .filter(|id| due.contains(id))
-            .collect();
-        let not_due: Vec<u32> = appids
-            .iter()
-            .copied()
-            .filter(|id| !due.contains(id))
-            .collect();
+        let (needs_fetch, not_due): (Vec<u32>, Vec<u32>) =
+            appids.iter().partition(|id| due.contains(id));
         if !not_due.is_empty() {
             on_settled(Settled::Cached(&not_due));
         }
@@ -818,7 +810,8 @@ pub async fn load_games_map(db: &SqlitePool, appids: &[u32]) -> AppResult<HashMa
 }
 
 /// Progress through `GameCache::fetch_missing`'s walk, reported to its
-/// `on_progress` callback. Apps Steam failed for count as done: they keep the
+/// `on_progress` callback, with each app the walk is done with reported to
+/// `on_settled` as well. Apps Steam failed for count as done: they keep the
 /// row they have (or stay uncached), and the next fetch tries them again.
 struct WalkProgress<F, S> {
     total: i64,
@@ -1715,16 +1708,19 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn a_list_load_waiting_for_another_loads_fetch_returns_once_its_app_is_stored() {
+    /// Load A fetches `IN_FIRST_CHUNK` and `IN_SECOND_CHUNK` in two chunks;
+    /// load B, which needs only `IN_FIRST_CHUNK`, starts while A's first chunk
+    /// is held and waits for A's fetch of it. Lets A's first chunk answer and
+    /// holds its second until B has returned. Returns B's result and the name
+    /// stored for `IN_SECOND_CHUNK` when B returned.
+    async fn load_waiting_for_the_first_of_two_chunks(
+        steam: FakeSteam,
+    ) -> (AppState, FakeSteam, Option<String>) {
         let mut state = test_state(test_db().await);
         state.config.steam_chunk_size = 1;
-        let (steam, gate) = FakeSteam::new()
-            .with_store_item(IN_FIRST_CHUNK, "First")
-            .with_store_item(IN_SECOND_CHUNK, "Second")
-            .held();
+        let (steam, gate) = steam.held();
 
-        let (first, second) = finishes(async {
+        let (first, (second, second_chunk)) = finishes(async {
             tokio::join!(
                 GameCache::ensure_cached_from(&state, &steam, &[IN_FIRST_CHUNK, IN_SECOND_CHUNK]),
                 async {
@@ -1736,48 +1732,6 @@ mod tests {
                             gate.answer_one();
                         },
                     );
-                    // The first load's second chunk is still held.
-                    let stored = stored_name(&state.db, IN_FIRST_CHUNK).await;
-                    let second_chunk = stored_name(&state.db, IN_SECOND_CHUNK).await;
-                    gate.release();
-                    (second, stored, second_chunk)
-                },
-            )
-        })
-        .await;
-
-        let _ = first.unwrap();
-        let (second, stored, second_chunk) = second;
-        let _ = second.unwrap();
-        assert_eq!(stored.as_deref(), Some("First"));
-        assert_eq!(second_chunk, None);
-        // One call per chunk: the waiting load did not fetch the app again.
-        assert_eq!(steam.calls(), 2);
-    }
-
-    #[tokio::test]
-    async fn a_list_load_waiting_for_another_loads_fetch_of_an_app_steam_fails_for_does_not_fetch_it_again(
-    ) {
-        let mut state = test_state(test_db().await);
-        state.config.steam_chunk_size = 1;
-        let (steam, gate) = FakeSteam::new()
-            .failing_every_call_for(IN_FIRST_CHUNK)
-            .with_store_item(IN_SECOND_CHUNK, "Second")
-            .held();
-
-        let (first, second) = finishes(async {
-            tokio::join!(
-                GameCache::ensure_cached_from(&state, &steam, &[IN_FIRST_CHUNK, IN_SECOND_CHUNK]),
-                async {
-                    reached(&steam).await;
-                    let (second, ()) = tokio::join!(
-                        GameCache::ensure_cached_from(&state, &steam, &[IN_FIRST_CHUNK]),
-                        async {
-                            waiting_for(&state, IN_FIRST_CHUNK).await;
-                            gate.answer_one();
-                        },
-                    );
-                    // The first load's second chunk is still held.
                     let second_chunk = stored_name(&state.db, IN_SECOND_CHUNK).await;
                     gate.release();
                     (second, second_chunk)
@@ -1787,12 +1741,43 @@ mod tests {
         .await;
 
         let _ = first.unwrap();
-        let (second, second_chunk) = second;
         let _ = second.unwrap();
+        (state, steam, second_chunk)
+    }
+
+    #[tokio::test]
+    async fn a_list_load_waiting_for_another_loads_fetch_returns_once_its_app_is_stored() {
+        let (state, steam, second_chunk) = load_waiting_for_the_first_of_two_chunks(
+            FakeSteam::new()
+                .with_store_item(IN_FIRST_CHUNK, "First")
+                .with_store_item(IN_SECOND_CHUNK, "Second"),
+        )
+        .await;
+
+        // The second list load returned before the first one's second chunk.
         assert_eq!(second_chunk, None);
+        assert_eq!(
+            stored_name(&state.db, IN_FIRST_CHUNK).await.as_deref(),
+            Some("First")
+        );
+        // One call per chunk: the waiting load did not fetch the app again.
+        assert_eq!(steam.calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_list_load_waiting_for_another_loads_fetch_of_an_app_steam_fails_for_does_not_fetch_it_again(
+    ) {
+        let (state, steam, second_chunk) = load_waiting_for_the_first_of_two_chunks(
+            FakeSteam::new()
+                .failing_every_call_for(IN_FIRST_CHUNK)
+                .with_store_item(IN_SECOND_CHUNK, "Second"),
+        )
+        .await;
+
+        assert_eq!(second_chunk, None);
+        assert_eq!(stored_raw_json(&state.db, IN_FIRST_CHUNK).await, None);
         // One call per chunk: the waiting load did not ask for the app again.
         assert_eq!(steam.calls(), 2);
-        assert_eq!(stored_raw_json(&state.db, IN_FIRST_CHUNK).await, None);
     }
 
     #[tokio::test]
