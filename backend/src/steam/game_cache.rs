@@ -1968,6 +1968,78 @@ mod tests {
         assert_eq!(steam.calls(), 2);
     }
 
+    /// Load A fetches `appids`; load B, which needs only `waited`, starts once
+    /// A's first call to Steam is held and waits for A's fetch of `waited`.
+    /// Then Steam answers every call. Fails the test when either load hangs.
+    async fn load_waiting_for_another_loads_fetch_of(
+        state: &AppState,
+        steam: &FakeSteam,
+        gate: &SteamGate,
+        appids: &[u32],
+        waited: u32,
+    ) {
+        let waited_ids = [waited];
+        let (first, second) = finishes(async {
+            tokio::join!(GameCache::ensure_cached_from(state, steam, appids), async {
+                reached(steam).await;
+                let (second, ()) = tokio::join!(
+                    GameCache::ensure_cached_from(state, steam, &waited_ids),
+                    async {
+                        waiting_for(state, waited).await;
+                        gate.release();
+                    },
+                );
+                second
+            },)
+        })
+        .await;
+        let _ = first.unwrap();
+        let _ = second.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_list_load_waiting_for_an_app_a_steam_outage_left_unasked_returns_without_asking_for_it(
+    ) {
+        let state = test_state(test_db().await);
+        let (steam, gate) = FakeSteam::new().failing_every_store_items_call().held();
+        let appids = [UNCACHED_A, UNCACHED_B, UNCACHED_C, UNCACHED_D, UNCACHED_E];
+
+        load_waiting_for_another_loads_fetch_of(&state, &steam, &gate, &appids, UNCACHED_E).await;
+
+        // The chunk request, then the single-app retries up to the limit; the
+        // waiting load did not ask for the app the outage left unasked.
+        assert_eq!(steam.calls(), 1 + MAX_CONSECUTIVE_SINGLE_APP_FAILURES);
+        assert_eq!(stored_raw_json(&state.db, UNCACHED_E).await, None);
+    }
+
+    #[tokio::test]
+    async fn a_list_load_waiting_for_an_app_a_rate_limited_appdetails_left_unasked_returns_without_asking_for_it(
+    ) {
+        let state = test_state(test_db().await);
+        let (steam, gate) = FakeSteam::new()
+            .with_app_details(ONLY_IN_APP_DETAILS, "Details only")
+            .with_app_details(ALSO_ONLY_IN_APP_DETAILS, "Also details only")
+            .rate_limiting_every_app_details_call()
+            .held();
+
+        load_waiting_for_another_loads_fetch_of(
+            &state,
+            &steam,
+            &gate,
+            &[ONLY_IN_APP_DETAILS, ALSO_ONLY_IN_APP_DETAILS],
+            ALSO_ONLY_IN_APP_DETAILS,
+        )
+        .await;
+
+        // The rate limit stopped the walk before it asked `appdetails` for the
+        // waited-for app, and the waiting load did not ask for it either.
+        assert_eq!(steam.app_details_calls(), 1);
+        assert_eq!(
+            stored_raw_json(&state.db, ALSO_ONLY_IN_APP_DETAILS).await,
+            None
+        );
+    }
+
     #[tokio::test]
     async fn an_uncached_app_steam_fails_for_is_not_fetched_again_during_the_cooldown() {
         let state = test_state(test_db().await);
