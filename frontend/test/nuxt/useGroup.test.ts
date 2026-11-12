@@ -36,8 +36,9 @@ describe('useGroup retryListLoads (Try again)', () => {
 
   it('reloads a list once the in-flight request it joined fails, so the click is not lost', async () => {
     const doomed = deferred<never>()
+    let librariesRequests = 0
     api.mockImplementation((url: string) =>
-      isLibraries(url) && librariesCalls() === 1 ? doomed.promise : Promise.resolve([]),
+      isLibraries(url) && ++librariesRequests === 1 ? doomed.promise : Promise.resolve([]),
     )
     const group = useGroup()
 
@@ -101,4 +102,23 @@ describe('useGroup retryListLoads (Try again)', () => {
     expect(useMemberLists().value.libraries.error).toBe('backend down')
   })
 
+  it('writes nothing and reloads nothing when the member leaves while the joined request fails', async () => {
+    vi.stubGlobal('confirm', () => true)
+    useState('groupDetail').value = { group: { name: 'G' }, members: [{}] }
+    const doomed = deferred<never>()
+    api.mockImplementation((url: string) =>
+      isLibraries(url) ? doomed.promise : Promise.resolve([]),
+    )
+    const group = useGroup()
+
+    const poll = group.refreshMemberData()
+    const retry = group.retryListLoads()
+    await group.leaveGroup()
+    doomed.reject(new Error('backend down'))
+    await poll
+    await retry
+
+    expect(librariesCalls()).toBe(1)
+    expect(useMemberLists().value.libraries.error).toBeNull()
+  })
 })
