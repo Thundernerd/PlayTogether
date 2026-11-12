@@ -1,32 +1,14 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant};
 
-/// How long an app Steam failed for is not fetched again, so a Steam outage
-/// or rate limit is not met with a new pass of requests on every list load.
-/// It covers the background refresh of stale rows and the fetch of apps with
-/// no row that list loads wait for.
-pub(super) const FAILED_FETCH_COOLDOWN: Duration = Duration::from_secs(15 * 60);
+use super::fetch_cooldown::FetchCooldown;
 
 /// Appids whose cached rows are stale and wait for the background refresh.
 /// An appid is queued once until its refresh finishes, and one worker per
-/// process drains the queue. It also holds the cooldown for apps a fetch from
-/// Steam failed for, whether the background refresh or a list load's fetch
-/// of an app with no row: such an appid is not queued or fetched again until
-/// the cooldown has passed.
+/// process drains the queue.
+#[derive(Default)]
 pub struct GameRefreshQueue {
     inner: Mutex<QueueState>,
-    /// The time the cooldown is measured with.
-    now: Box<dyn Fn() -> Instant + Send + Sync>,
-}
-
-impl Default for GameRefreshQueue {
-    fn default() -> Self {
-        Self {
-            inner: Mutex::default(),
-            now: Box::new(Instant::now),
-        }
-    }
 }
 
 #[derive(Default)]
@@ -35,8 +17,6 @@ struct QueueState {
     pending: Vec<u32>,
     /// Pending or being refreshed; an appid here is not queued again.
     claimed: HashSet<u32>,
-    /// When a fetch from Steam last failed for an appid still in its cooldown.
-    failed_at: HashMap<u32, Instant>,
     worker_running: bool,
 }
 
@@ -45,61 +25,20 @@ impl GameRefreshQueue {
         Self::default()
     }
 
-    /// A queue whose cooldown is measured with `clock` instead of the system
-    /// clock.
-    #[cfg(test)]
-    pub fn with_clock(clock: ManualClock) -> Self {
-        Self {
-            inner: Mutex::default(),
-            now: Box::new(move || clock.now()),
-        }
-    }
-
     /// The queue state. Every update leaves it consistent, so a lock poisoned
     /// by a panic elsewhere is still safe to use.
     fn state(&self) -> MutexGuard<'_, QueueState> {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// The queue state, with the cooldowns that have passed cleared.
-    fn state_after_cooldowns(&self) -> MutexGuard<'_, QueueState> {
-        let now = (self.now)();
-        let mut state = self.state();
-        state
-            .failed_at
-            .retain(|_, failed_at| now.duration_since(*failed_at) < FAILED_FETCH_COOLDOWN);
-        state
-    }
-
-    /// Starts the cooldown for `appids`, which a fetch from Steam failed for.
-    /// They are not queued or fetched again until it has passed.
-    pub fn record_failed(&self, appids: &[u32]) {
-        let now = (self.now)();
-        let mut state = self.state();
-        for &appid in appids {
-            state.failed_at.insert(appid, now);
-        }
-    }
-
-    /// The `appids` not in their cooldown, in the order given.
-    pub fn not_cooling_down(&self, appids: &[u32]) -> Vec<u32> {
-        let state = self.state_after_cooldowns();
-        appids
-            .iter()
-            .copied()
-            .filter(|appid| !state.failed_at.contains_key(appid))
-            .collect()
-    }
-
-    /// Queues the `appids` that are not claimed already or in their cooldown.
-    /// Returns true when the caller must start the worker with `start_worker`.
+    /// Queues the `appids` that are not claimed already or in their
+    /// `cooldown`. Returns true when the caller must start the worker with
+    /// `start_worker`.
     #[must_use = "when true, the caller must start the refresh worker"]
-    pub fn enqueue(&self, appids: &[u32]) -> bool {
-        let mut state = self.state_after_cooldowns();
-        for &appid in appids {
-            if state.failed_at.contains_key(&appid) {
-                continue;
-            }
+    pub fn enqueue(&self, appids: &[u32], cooldown: &FetchCooldown) -> bool {
+        let appids = cooldown.not_cooling_down(appids);
+        let mut state = self.state();
+        for appid in appids {
             if state.claimed.insert(appid) {
                 state.pending.push(appid);
             }
@@ -175,38 +114,5 @@ impl Drop for RefreshWorker<'_> {
             state.claimed.remove(appid);
         }
         state.worker_running = false;
-    }
-}
-
-#[cfg(test)]
-pub use manual_clock::ManualClock;
-
-#[cfg(test)]
-mod manual_clock {
-    use std::sync::{Arc, Mutex};
-    use std::time::{Duration, Instant};
-
-    /// A clock that only moves when a test advances it.
-    #[derive(Clone)]
-    pub struct ManualClock(Arc<Mutex<Instant>>);
-
-    impl Default for ManualClock {
-        fn default() -> Self {
-            Self(Arc::new(Mutex::new(Instant::now())))
-        }
-    }
-
-    impl ManualClock {
-        pub fn new() -> Self {
-            Self::default()
-        }
-
-        pub fn now(&self) -> Instant {
-            *self.0.lock().unwrap()
-        }
-
-        pub fn advance(&self, by: Duration) {
-            *self.0.lock().unwrap() += by;
-        }
     }
 }

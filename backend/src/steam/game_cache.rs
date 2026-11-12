@@ -252,11 +252,11 @@ impl GameCache {
                 "refreshing stale game cache rows in the background"
             );
             match Self::fetch_missing(state, client, &batch, |_, _| async {}).await {
-                Ok(failed) => state.game_refresh.record_failed(&failed),
+                Ok(failed) => state.fetch_cooldown.record_failed(&failed),
                 Err(error) => {
                     warn!(%error, "background game cache refresh failed; rows stay due for refresh");
                     // Which apps failed is unknown, so hold back the whole batch.
-                    state.game_refresh.record_failed(&batch);
+                    state.fetch_cooldown.record_failed(&batch);
                 }
             }
         }
@@ -279,10 +279,10 @@ impl GameCache {
             .copied()
             .filter(|id| !stored.contains(id))
             .collect();
-        let missing = state.game_refresh.not_cooling_down(&missing);
+        let missing = state.fetch_cooldown.not_cooling_down(&missing);
         if !missing.is_empty() {
             let failed = Self::fetch_missing(state, client, &missing, |_, _| async {}).await?;
-            state.game_refresh.record_failed(&failed);
+            state.fetch_cooldown.record_failed(&failed);
         }
 
         let due = Self::get_due_appids(state, appids).await?;
@@ -292,7 +292,7 @@ impl GameCache {
             .filter(|id| stored.contains(id) && due.contains(id))
             .collect();
 
-        Ok(state.game_refresh.enqueue(&stale))
+        Ok(state.game_refresh.enqueue(&stale, &state.fetch_cooldown))
     }
 
     /// Fetches the `appids` that are due from Steam and caches them. Apps
@@ -786,9 +786,9 @@ mod tests {
 
     use crate::config::Config;
     use crate::jobs::registry::SyncJobRegistry;
-    use crate::steam::game_refresh::{ManualClock, FAILED_FETCH_COOLDOWN};
+    use crate::steam::fetch_cooldown::{ManualClock, FAILED_FETCH_COOLDOWN};
     use crate::steam::store::fake::FakeSteam;
-    use crate::steam::GameRefreshQueue;
+    use crate::steam::{FetchCooldown, GameRefreshQueue};
 
     const PRICE_TTL_HOURS: i64 = 24;
     const GAME_TTL_DAYS: i64 = 7;
@@ -821,7 +821,7 @@ mod tests {
     async fn test_state_with_clock() -> (AppState, ManualClock) {
         let mut state = test_state(test_db().await);
         let clock = ManualClock::new();
-        state.game_refresh = Arc::new(GameRefreshQueue::with_clock(clock.clone()));
+        state.fetch_cooldown = Arc::new(FetchCooldown::with_clock(clock.clone()));
         (state, clock)
     }
 
@@ -832,6 +832,7 @@ mod tests {
             tags: Arc::new(RwLock::new(HashMap::new())),
             sync_jobs: Arc::new(SyncJobRegistry::new()),
             game_refresh: Arc::new(GameRefreshQueue::new()),
+            fetch_cooldown: Arc::new(FetchCooldown::new()),
             config: Config {
                 database_url: "sqlite::memory:".into(),
                 bind_addr: "127.0.0.1:0".into(),
