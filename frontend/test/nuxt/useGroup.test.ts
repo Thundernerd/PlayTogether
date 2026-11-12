@@ -209,3 +209,68 @@ describe('useGroup leaving while a refresh is in flight', () => {
     await joinedPoll
   })
 })
+
+describe('useGroup leaving before its navigation finishes', () => {
+  const leftGroup = { group: { name: 'Left group' }, members: [{}] }
+
+  beforeEach(() => {
+    api.mockReset()
+    api.mockResolvedValue([])
+    vi.stubGlobal('confirm', () => true)
+    signInAsMember()
+    useState('groupDetail').value = leftGroup
+    useMemberLists().value = emptyMemberLists()
+  })
+
+  function holdNavigation() {
+    const navigation = deferred<undefined>()
+    const push = vi.spyOn(useRouter(), 'push').mockReturnValue(navigation.promise)
+    return {
+      // Waits until the action has reset the group and is awaiting the navigation.
+      reached: () => vi.waitFor(() => expect(push).toHaveBeenCalled()),
+      finish: () => {
+        navigation.resolve(undefined)
+        push.mockRestore()
+      },
+    }
+  }
+
+  it.each(['leaveGroup', 'deleteGroup'] as const)(
+    'does not write the group back from a refresh started while %s navigates away',
+    async (action) => {
+      const navigation = holdNavigation()
+      const pendingGroup = deferred<typeof leftGroup>()
+      api.mockImplementation((url: string) =>
+        isGroup(url) ? pendingGroup.promise : Promise.resolve([]),
+      )
+      const group = useGroup()
+
+      const leaving = group[action]()
+      await navigation.reached()
+      const poll = group.refreshMemberData()
+      pendingGroup.resolve(leftGroup)
+      await poll
+      navigation.finish()
+      await leaving
+
+      expect(group.groupDetail.value).toBeNull()
+    },
+  )
+})
+
+describe('useGroup refreshing as a non-member', () => {
+  it('updates the shown group', async () => {
+    api.mockReset()
+    useState('groupMe').value = null
+    useState('groupDetail').value = { group: { name: 'Before' }, members: [] }
+    const synced = { group: { name: 'After' }, members: [] }
+    api.mockImplementation((url: string) =>
+      isGroup(url) ? Promise.resolve(synced) : Promise.resolve([]),
+    )
+    const group = useGroup()
+
+    await group.refreshMemberData()
+
+    expect(group.groupDetail.value).toEqual(synced)
+  })
+})

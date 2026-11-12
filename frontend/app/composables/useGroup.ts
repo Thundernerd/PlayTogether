@@ -123,11 +123,14 @@ export function useGroup() {
   // One refresh at a time, shared like the list requests. Once resetMemberData() has
   // superseded it (the member left), it no longer writes the left group back or clears the
   // refresh that replaced it.
+  // A refresh only updates a group that is still shown: loading one from nothing is
+  // ensureLoaded()'s job, and an empty group here means the member left, possibly while the
+  // route still holds the old invite code because the navigation away hasn't finished.
   async function refreshMemberData() {
     if (inflight.refresh) return inflight.refresh
     const refresh: Promise<void> = Promise.all([
       api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`).then((detail) => {
-        if (inflight.refresh === refresh) groupDetail.value = detail
+        if (inflight.refresh === refresh && groupDetail.value) groupDetail.value = detail
       }),
       loadList('libraries'),
       loadList('wishlists'),
