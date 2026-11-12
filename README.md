@@ -57,6 +57,8 @@ Set `BACKEND_URL=http://localhost:8080` if the API runs elsewhere.
 npm install -g "$(node -p "require('./package.json').packageManager")"
 ```
 
+The pinned npm runs a dependency's install scripts only when `allowScripts` in `frontend/package.json` allows that package. The policy denies the scripts of `esbuild`, `@parcel/watcher` and `fsevents`, none of which the build needs: esbuild and @parcel/watcher get prebuilt binaries from their optional platform packages, and fsevents is macOS-only. If `npm ci` warns that a new dependency's install scripts are `not yet covered by allowScripts`, decide whether it needs them and record the answer with `npm deny-scripts <pkg>` or `npm approve-scripts <pkg>`.
+
 Type-check the frontend (including `.vue` files) with `npm run typecheck`; `npm run build` does not type-check.
 
 Run the frontend unit tests (Vitest, under `frontend/test/`) with `npm run test`.
