@@ -252,17 +252,19 @@ impl GameCache {
                 "refreshing stale game cache rows in the background"
             );
             match Self::fetch_missing(state, client, &batch, |_, _| async {}).await {
-                Ok(failed) => worker.record_failed(&failed),
+                Ok(failed) => state.game_refresh.record_failed(&failed),
                 Err(error) => {
                     warn!(%error, "background game cache refresh failed; rows stay due for refresh");
                     // Which apps failed is unknown, so hold back the whole batch.
-                    worker.record_failed(&batch);
+                    state.game_refresh.record_failed(&batch);
                 }
             }
         }
     }
 
-    /// Fetches the `appids` with no cached row and waits for them. Apps whose
+    /// Fetches the `appids` with no cached row and waits for them. Apps with
+    /// no row that Steam failed for are left out until their cooldown has
+    /// passed, so list loads don't refetch them every time. Apps whose
     /// row is past a TTL are served as cached and queued for the background
     /// refresh. Returns true when the caller must start the refresh worker.
     #[must_use = "when true, the caller must start the refresh worker"]
@@ -277,8 +279,10 @@ impl GameCache {
             .copied()
             .filter(|id| !stored.contains(id))
             .collect();
+        let missing = state.game_refresh.not_cooling_down(&missing);
         if !missing.is_empty() {
-            Self::fetch_missing(state, client, &missing, |_, _| async {}).await?;
+            let failed = Self::fetch_missing(state, client, &missing, |_, _| async {}).await?;
+            state.game_refresh.record_failed(&failed);
         }
 
         let due = Self::get_due_appids(state, appids).await?;
@@ -782,7 +786,7 @@ mod tests {
 
     use crate::config::Config;
     use crate::jobs::registry::SyncJobRegistry;
-    use crate::steam::game_refresh::{ManualClock, FAILED_REFRESH_COOLDOWN};
+    use crate::steam::game_refresh::{ManualClock, FAILED_FETCH_COOLDOWN};
     use crate::steam::store::fake::FakeSteam;
     use crate::steam::GameRefreshQueue;
 
@@ -813,6 +817,14 @@ mod tests {
     }
 
     /// An `AppState` over `db` with no delay between Steam calls.
+    /// A test state whose cooldown is measured with the returned clock.
+    async fn test_state_with_clock() -> (AppState, ManualClock) {
+        let mut state = test_state(test_db().await);
+        let clock = ManualClock::new();
+        state.game_refresh = Arc::new(GameRefreshQueue::with_clock(clock.clone()));
+        (state, clock)
+    }
+
     fn test_state(db: SqlitePool) -> AppState {
         AppState {
             db,
@@ -1286,9 +1298,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_stale_app_steam_failed_for_is_queued_again_once_the_cooldown_has_passed() {
-        let mut state = test_state(test_db().await);
-        let clock = ManualClock::new();
-        state.game_refresh = Arc::new(GameRefreshQueue::with_clock(clock.clone()));
+        let (state, clock) = test_state_with_clock().await;
         insert_price_stale_failing_row(&state.db).await;
         let steam = FakeSteam::new().failing_every_call_for(FAILING);
         let _ = GameCache::ensure_cached_from(&state, &steam, &[FAILING])
@@ -1296,7 +1306,7 @@ mod tests {
             .unwrap();
         GameCache::refresh_queued(&state, &steam).await;
 
-        clock.advance(FAILED_REFRESH_COOLDOWN);
+        clock.advance(FAILED_FETCH_COOLDOWN);
         let starts_worker = GameCache::ensure_cached_from(&state, &steam, &[FAILING])
             .await
             .unwrap();
@@ -1355,5 +1365,47 @@ mod tests {
 
         assert!(!starts_worker);
         assert_eq!(state.game_refresh.queued(), Vec::<u32>::new());
+    }
+
+    #[tokio::test]
+    async fn an_uncached_app_steam_fails_for_is_not_fetched_again_during_the_cooldown() {
+        let state = test_state(test_db().await);
+        let failing = FakeSteam::new().failing_every_call_for(UNCACHED);
+        let _ = GameCache::ensure_cached_from(&state, &failing, &[UNCACHED])
+            .await
+            .unwrap();
+
+        let answering = FakeSteam::new().with_store_item(UNCACHED, "Uncached");
+        let _ = GameCache::ensure_cached_from(&state, &answering, &[UNCACHED])
+            .await
+            .unwrap();
+
+        assert_eq!(stored_raw_json(&state.db, UNCACHED).await, None);
+    }
+
+    #[tokio::test]
+    async fn an_uncached_app_steam_failed_for_is_fetched_again_once_the_cooldown_has_passed() {
+        let (state, clock) = test_state_with_clock().await;
+        let failing = FakeSteam::new().failing_every_call_for(UNCACHED);
+        let _ = GameCache::ensure_cached_from(&state, &failing, &[UNCACHED])
+            .await
+            .unwrap();
+
+        let answering = FakeSteam::new().with_store_item(UNCACHED, "Uncached");
+        clock.advance(FAILED_FETCH_COOLDOWN - std::time::Duration::from_secs(1));
+        let _ = GameCache::ensure_cached_from(&state, &answering, &[UNCACHED])
+            .await
+            .unwrap();
+        assert_eq!(stored_raw_json(&state.db, UNCACHED).await, None);
+
+        clock.advance(std::time::Duration::from_secs(1));
+        let _ = GameCache::ensure_cached_from(&state, &answering, &[UNCACHED])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            stored_name(&state.db, UNCACHED).await.as_deref(),
+            Some("Uncached")
+        );
     }
 }
