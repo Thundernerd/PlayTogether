@@ -14,6 +14,7 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Self {
         Self {
+            // Keeps its pre-Squadlist file name on purpose so existing deployments keep their data.
             database_url: env::var("DATABASE_URL")
                 .unwrap_or_else(|_| "sqlite:playtogether.db?mode=rwc".into()),
             bind_addr: env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".into()),
