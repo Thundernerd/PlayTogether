@@ -25,8 +25,9 @@ use crate::steam::{FetchCooldown, GameCache, GameRefreshQueue, TagCache};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "playtogether_backend=debug,tower_http=debug".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                concat!(env!("CARGO_CRATE_NAME"), "=debug,tower_http=debug").into()
+            }),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -49,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::migrate!("./migrations").run(&db).await?;
 
     let http = reqwest::Client::builder()
-        .user_agent("PlayTogether/0.1")
+        .user_agent("Squadlist/0.1")
         .build()?;
 
     let state = AppState {

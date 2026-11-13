@@ -41,7 +41,7 @@ RUN useradd -r -s /bin/false appuser \
     && mkdir -p /data \
     && chown appuser:appuser /data
 
-COPY --from=builder /app/target/release/playtogether-backend /app/playtogether-backend
+COPY --from=builder /app/target/release/squadlist-backend /app/squadlist-backend
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
@@ -53,4 +53,4 @@ EXPOSE 8080
 VOLUME ["/data"]
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["./playtogether-backend"]
+CMD ["./squadlist-backend"]

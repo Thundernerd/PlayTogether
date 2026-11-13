@@ -1,4 +1,4 @@
-# PlayTogether
+# Squadlist
 
 Compare Steam wishlists with friends, mark games you want to play together, and vote on what to play next.
 
@@ -84,12 +84,16 @@ The minimum supported version is `engines.node` in `frontend/package.json`; if i
 
 ## Docker images
 
-"Publish Docker images" pushes `tnrd/playtogether-backend` and `tnrd/playtogether-frontend` (used by `docker-compose.yml`) with these tags:
+"Publish Docker images" pushes `tnrd/squadlist-backend` and `tnrd/squadlist-frontend` (used by `docker-compose.yml`) with these tags:
 
 - `<short sha>` for every published run (pushes to `main`, `v*` tags, manual runs)
 - `<version>` and `<major>.<minor>` for `v*` tags
 - the optional extra tag given to a manual run
 - `latest` only for the commit that is the tip of `main` when its run publishes, so a slower run for an older commit never moves `latest` back. `v*` tag pushes don't move `latest`.
+
+The old `tnrd/playtogether-backend` and `tnrd/playtogether-frontend` images no longer get updates. To switch an existing deployment, change the two `image:` lines in your `docker-compose.yml` to the `tnrd/squadlist-*` images and recreate the containers. Keep the `/data` volume: the database file is still `playtogether.db`, so your groups, members and votes carry over.
+
+Create the `tnrd/squadlist-backend` and `tnrd/squadlist-frontend` repositories on Docker Hub before the first publish, unless `DOCKERHUB_TOKEN` is allowed to create repositories on push.
 
 ## How it works
 

@@ -1,3 +1,4 @@
+// Keeps its pre-Squadlist name on purpose so existing members keep their tokens.
 const TOKEN_KEY = 'playtogether_member_token'
 
 export function useMemberToken() {

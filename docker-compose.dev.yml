@@ -9,7 +9,7 @@ services:
     environment:
       DATABASE_URL: sqlite:/data/playtogether.db?mode=rwc
       BIND_ADDR: 0.0.0.0:8080
-      RUST_LOG: playtogether_backend=debug,tower_http=debug
+      RUST_LOG: squadlist_backend=debug,tower_http=debug
     volumes:
       - ./backend:/app
       - backend-cargo-registry:/usr/local/cargo/registry
