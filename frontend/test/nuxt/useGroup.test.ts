@@ -345,6 +345,15 @@ describe('useGroup opening another group in the same tab', () => {
     member: { id: 'member-2' },
   } as unknown as MeResponse
 
+  // Serves both groups and B's member; `lists` answers the list requests (empty by default).
+  function serveGroups(lists: (url: string) => Promise<unknown> = () => Promise.resolve([])) {
+    api.mockImplementation((url: string) => {
+      if (isGroup(url)) return Promise.resolve(url.endsWith('/XYZ') ? groupB : groupA)
+      if (url.endsWith('/api/members/me')) return Promise.resolve(meB)
+      return lists(url)
+    })
+  }
+
   beforeEach(() => {
     api.mockReset()
     useMemberLists().value = emptyMemberLists()
@@ -352,11 +361,7 @@ describe('useGroup opening another group in the same tab', () => {
     useState('groupDetail').value = groupA
     signInAsMember()
     useMemberToken().setToken('group-b-token')
-    api.mockImplementation((url: string) => {
-      if (isGroup(url)) return Promise.resolve(url.endsWith('/XYZ') ? groupB : groupA)
-      if (url.endsWith('/api/members/me')) return Promise.resolve(meB)
-      return Promise.resolve([])
-    })
+    serveGroups()
   })
 
   afterEach(async () => {
@@ -378,9 +383,7 @@ describe('useGroup opening another group in the same tab', () => {
     const libraryA = [{ member: { id: 'member-1' } }]
     const libraryB = [{ member: { id: 'member-2' } }]
     const pendingLibraryA = deferred<typeof libraryA>()
-    api.mockImplementation((url: string) => {
-      if (isGroup(url)) return Promise.resolve(url.endsWith('/XYZ') ? groupB : groupA)
-      if (url.endsWith('/api/members/me')) return Promise.resolve(meB)
+    serveGroups((url) => {
       if (isLibraries(url)) return pendingLibraryA.promise
       if (url.endsWith('/api/groups/group-2/libraries')) return Promise.resolve(libraryB)
       return Promise.resolve([])
