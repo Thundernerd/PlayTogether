@@ -173,6 +173,15 @@ export function useGroup() {
     syncFromStorage()
     loading.value = true
     error.value = null
+    // The shared state still holds the group shown before (opened in the same tab without
+    // leaving it): drop it and load the route's group from scratch, including the member,
+    // since creating or joining the new group stored a new token. Resetting first supersedes
+    // requests still in flight for the previous group.
+    if (groupDetail.value && groupDetail.value.group.invite_code.toUpperCase() !== inviteCode.value) {
+      groupDetail.value = null
+      me.value = null
+      resetMemberData()
+    }
     const resetsAtStart = resets
     try {
       const [nextGroup, nextMe] = await Promise.all([
