@@ -9,7 +9,7 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      title: 'PlayTogether',
+      title: 'Squadlist',
       meta: [
         { name: 'description', content: 'Compare Steam wishlists and pick games to play together' },
       ],

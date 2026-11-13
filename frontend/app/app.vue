@@ -1,7 +1,7 @@
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <NuxtLink to="/" class="brand">PlayTogether</NuxtLink>
+      <NuxtLink to="/" class="brand">Squadlist</NuxtLink>
     </header>
     <main class="app-main">
       <NuxtPage />
