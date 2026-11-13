@@ -410,4 +410,20 @@ describe('useGroup opening another group in the same tab', () => {
     expect(groupCalls()).toBe(0)
     expect(group.groupDetail.value).toEqual(groupA)
   })
+
+  it("shows the member view after joining from the new group's page while the previous member is cached", async () => {
+    // A member of group A opened group B's invite link, so B is shown but `me` is still A's.
+    useState('groupDetail').value = groupB
+    const serve = api.getMockImplementation()!
+    api.mockImplementation((url: string) =>
+      url.endsWith('/join') ? Promise.resolve({ token: 'group-b-token' }) : serve(url),
+    )
+    await useRouter().push('/g/XYZ')
+    const group = useGroup()
+
+    await group.joinGroup('Player two')
+
+    expect(group.me.value).toEqual(meB)
+    expect(group.isMember.value).toBe(true)
+  })
 })

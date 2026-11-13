@@ -11,8 +11,8 @@ const inflight: Record<ListKey | 'refresh', Promise<void> | null> = {
   refresh: null,
 }
 
-// Bumped by resetMemberData() (the member left, or another group was opened), so an
-// ensureLoaded() that started before the reset knows its group and member responses are
+// Bumped by resetMemberData() (the member left or joined, or another group was opened), so
+// an ensureLoaded() that started before the reset knows its group and member responses are
 // stale. Shared like the requests.
 let resets = 0
 
@@ -136,8 +136,8 @@ export function useGroup() {
   }
 
   // One refresh at a time, shared like the list requests. Once resetMemberData() has
-  // superseded it (the member left, or another group was opened), it no longer writes the left group back or clears the
-  // refresh that replaced it. It reloads the group only if one is shown when it starts:
+  // superseded it (the member left, or another group was opened), it no longer writes the
+  // previous group back or clears the refresh that replaced it. It reloads the group only if one is shown when it starts:
   // loading one from nothing is ensureLoaded()'s job, and no group means the member left,
   // possibly while the route still holds the old invite code because the navigation away
   // hasn't finished. Fetching that code could write the left group over the next one opened.
@@ -226,6 +226,10 @@ export function useGroup() {
         body: { display_name: displayName },
       })
       setToken(res.token)
+      // A member of another group can join this one from its invite link: drop that member
+      // and its lists (superseding their requests) so ensureLoaded() fetches the new member.
+      me.value = null
+      resetMemberData()
       await ensureLoaded()
     } catch (e: unknown) {
       error.value = e instanceof Error ? e.message : 'Failed to join group'
