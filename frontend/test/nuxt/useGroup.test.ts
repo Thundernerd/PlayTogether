@@ -336,3 +336,94 @@ describe('useGroup leaving while the initial load is in flight', () => {
     },
   )
 })
+
+describe('useGroup opening another group in the same tab', () => {
+  const groupA = { group: { invite_code: 'ABC', name: 'Group A' }, members: [{}] }
+  const groupB = { group: { invite_code: 'XYZ', name: 'Group B' }, members: [{}, {}] }
+  const meB = {
+    group: { id: 'group-2', invite_code: 'XYZ' },
+    member: { id: 'member-2' },
+  } as unknown as MeResponse
+
+  // Serves both groups and B's member; `lists` answers the list requests (empty by default).
+  function serveGroups(lists: (url: string) => Promise<unknown> = () => Promise.resolve([])) {
+    api.mockImplementation((url: string) => {
+      if (isGroup(url)) return Promise.resolve(url.endsWith('/XYZ') ? groupB : groupA)
+      if (url.endsWith('/api/members/me')) return Promise.resolve(meB)
+      return lists(url)
+    })
+  }
+
+  beforeEach(() => {
+    api.mockReset()
+    useMemberLists().value = emptyMemberLists()
+    // Group A's page was shown, then the member created or joined group B (a new token).
+    useState('groupDetail').value = groupA
+    signInAsMember()
+    useMemberToken().setToken('group-b-token')
+    serveGroups()
+  })
+
+  afterEach(async () => {
+    await useRouter().push('/')
+  })
+
+  it("loads the new group's detail and member instead of keeping the previous group's", async () => {
+    await useRouter().push('/g/XYZ')
+    const group = useGroup()
+
+    await group.ensureLoaded()
+
+    expect(group.groupDetail.value).toEqual(groupB)
+    expect(group.me.value).toEqual(meB)
+    expect(group.isMember.value).toBe(true)
+  })
+
+  it("loads the new group's member lists, not a previous group's request still in flight", async () => {
+    const libraryA = [{ member: { id: 'member-1' } }]
+    const libraryB = [{ member: { id: 'member-2' } }]
+    const pendingLibraryA = deferred<typeof libraryA>()
+    serveGroups((url) => {
+      if (isLibraries(url)) return pendingLibraryA.promise
+      if (url.endsWith('/api/groups/group-2/libraries')) return Promise.resolve(libraryB)
+      return Promise.resolve([])
+    })
+    const group = useGroup()
+    // Group A's page polls, then the member opens group B before that poll settles.
+    const poll = group.refreshMemberData()
+    await useRouter().push('/g/XYZ')
+
+    await group.ensureLoaded()
+    pendingLibraryA.resolve(libraryA)
+    await poll
+
+    expect(useMemberLists().value.libraries.data).toEqual(libraryB)
+  })
+
+  it("keeps the cached group when returning to that group's page", async () => {
+    // The invite link's case differs from the stored code's.
+    await useRouter().push('/g/abc')
+    const group = useGroup()
+
+    await group.ensureLoaded()
+
+    expect(groupCalls()).toBe(0)
+    expect(group.groupDetail.value).toEqual(groupA)
+  })
+
+  it("shows the member view after joining from the new group's page while the previous member is cached", async () => {
+    // A member of group A opened group B's invite link, so B is shown but `me` is still A's.
+    useState('groupDetail').value = groupB
+    const serve = api.getMockImplementation()!
+    api.mockImplementation((url: string) =>
+      url.endsWith('/join') ? Promise.resolve({ token: 'group-b-token' }) : serve(url),
+    )
+    await useRouter().push('/g/XYZ')
+    const group = useGroup()
+
+    await group.joinGroup('Player two')
+
+    expect(group.me.value).toEqual(meB)
+    expect(group.isMember.value).toBe(true)
+  })
+})
