@@ -44,7 +44,7 @@ jobs:
   build:
     runs-on: ${{ matrix.runner }}
     env:
-      IMAGE: tnrd/playtogether-${{ matrix.context }}
+      IMAGE: tnrd/squadlist-${{ matrix.context }}
     strategy:
       fail-fast: false
       matrix:
@@ -144,7 +144,7 @@ jobs:
     needs: [build, decide-latest]
     runs-on: ubuntu-latest
     env:
-      IMAGE: tnrd/playtogether-${{ matrix.context }}
+      IMAGE: tnrd/squadlist-${{ matrix.context }}
     strategy:
       fail-fast: false
       matrix:
@@ -219,7 +219,7 @@ jobs:
       - name: Hand latest to a newer tip of main
         env:
           GH_TOKEN: ${{ github.token }}
-          IMAGES: tnrd/playtogether-backend tnrd/playtogether-frontend
+          IMAGES: tnrd/squadlist-backend tnrd/squadlist-frontend
         run: |
           if ! main_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha); then
             echo "::warning::Could not re-check the tip of main: leaving latest on $GITHUB_SHA."
