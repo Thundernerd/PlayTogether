@@ -1,4 +1,4 @@
-import type { GroupDetailResponse, MeResponse, SyncStatus } from '~/types/api'
+import type { Group, GroupDetailResponse, MeResponse, SyncStatus } from '~/types/api'
 import type { ListData, ListKey, MemberListState } from '~/composables/useMemberList'
 
 // In-flight requests, shared by every useGroup() instance like the loading flags, so the
@@ -11,8 +11,9 @@ const inflight: Record<ListKey | 'refresh', Promise<void> | null> = {
   refresh: null,
 }
 
-// Bumped by resetMemberData() (the member left), so an ensureLoaded() that started before
-// the reset knows its group and member responses are stale. Shared like the requests.
+// Bumped by resetMemberData() (the member left, or another group was opened), so an
+// ensureLoaded() that started before the reset knows its group and member responses are
+// stale. Shared like the requests.
 let resets = 0
 
 const listPaths: Record<ListKey, string> = {
@@ -54,9 +55,18 @@ export function useGroup() {
     inflight.refresh = null
   }
 
-  const isMember = computed(
-    () => !!me.value && me.value.group.invite_code.toUpperCase() === inviteCode.value,
-  )
+  // Drops the shown group, its member and lists, superseding their requests in flight.
+  function clearGroup() {
+    groupDetail.value = null
+    me.value = null
+    resetMemberData()
+  }
+
+  function isRouteGroup(group: Group) {
+    return group.invite_code.toUpperCase() === inviteCode.value
+  }
+
+  const isMember = computed(() => !!me.value && isRouteGroup(me.value.group))
 
   const myWishlist = computed(() =>
     lists.value.wishlists.data.find((w) => w.member.id === me.value?.member.id),
@@ -126,7 +136,7 @@ export function useGroup() {
   }
 
   // One refresh at a time, shared like the list requests. Once resetMemberData() has
-  // superseded it (the member left), it no longer writes the left group back or clears the
+  // superseded it (the member left, or another group was opened), it no longer writes the left group back or clears the
   // refresh that replaced it. It reloads the group only if one is shown when it starts:
   // loading one from nothing is ensureLoaded()'s job, and no group means the member left,
   // possibly while the route still holds the old invite code because the navigation away
@@ -177,11 +187,7 @@ export function useGroup() {
     // leaving it): drop it and load the route's group from scratch, including the member,
     // since creating or joining the new group stored a new token. Resetting first supersedes
     // requests still in flight for the previous group.
-    if (groupDetail.value && groupDetail.value.group.invite_code.toUpperCase() !== inviteCode.value) {
-      groupDetail.value = null
-      me.value = null
-      resetMemberData()
-    }
+    if (groupDetail.value && !isRouteGroup(groupDetail.value.group)) clearGroup()
     const resetsAtStart = resets
     try {
       const [nextGroup, nextMe] = await Promise.all([
@@ -190,7 +196,8 @@ export function useGroup() {
           : api<GroupDetailResponse>(`/api/groups/by-invite/${inviteCode.value}`),
         token.value && !me.value ? fetchMe() : undefined,
       ])
-      // The member left while these were in flight: don't write the left group or member back.
+      // The member left, or opened another group, while these were in flight: don't write the
+      // previous group or member back.
       if (resets !== resetsAtStart) return
       // Assign and start the list loads in one synchronous step: otherwise Vue renders the
       // member's page before the loading flags are set, flashing its empty / not-synced text.
@@ -243,9 +250,7 @@ export function useGroup() {
     try {
       await api('/api/members/me', { method: 'DELETE' })
       clearToken()
-      groupDetail.value = null
-      me.value = null
-      resetMemberData()
+      clearGroup()
       await router.push('/')
     } catch (e: unknown) {
       error.value = e instanceof Error ? e.message : 'Failed to leave group'
@@ -265,9 +270,7 @@ export function useGroup() {
     try {
       await api(`/api/groups/${me.value.group.id}`, { method: 'DELETE' })
       clearToken()
-      groupDetail.value = null
-      me.value = null
-      resetMemberData()
+      clearGroup()
       await router.push('/')
     } catch (e: unknown) {
       error.value = e instanceof Error ? e.message : 'Failed to delete group'
